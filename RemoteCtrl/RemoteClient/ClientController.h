@@ -1,4 +1,4 @@
-#pragma 
+ï»¿#pragma 
 #include "ClientSocket.h"
 #include "RemoteClientDlg.h"
 #include "DlProgDlg.h"
@@ -30,7 +30,7 @@ class CClientController : public Singleton<CClientController>
 public:
 	struct ReqInfo
 	{
-		const Packet* pPacket;
+	    const Packet* pPacket;
 		bool isResponse;
 		ReqInfo(const Packet* pPacket, bool isResponse = true) : pPacket(pPacket), isResponse(isResponse) {}
 	};
@@ -62,12 +62,12 @@ protected:
 	~CClientController();
 	void CleanupHandles();
 
-	// Ïß³Ì¿ØÖÆÏà¹Ø
+	// çº¿ç¨‹æ§åˆ¶ç›¸å…³
 	std::atomic<bool> m_EntryThreadRunning;
 	std::atomic<bool> m_WorkerRunning;
 	HANDLE m_WorkerStopSyncSignal;
-	HANDLE m_RequestWorkerCtrlSignal[2];		// 1 Æô¶¯Ïà¹Ø, 2 ½áÊøÏà¹Ø
-	HANDLE m_ResponseWorkerCtrlSignal[2];		// Í¬ÉÏ
+	HANDLE m_RequestWorkerCtrlSignal[2];		// 1 å¯åŠ¨ç›¸å…³, 2 ç»“æŸç›¸å…³
+	HANDLE m_ResponseWorkerCtrlSignal[2];		// åŒä¸Š
 	HANDLE m_EntryCtrlThread;
 	unsigned int m_EntryCtrlThreadID;
 	static unsigned int __stdcall EntryCtrlThread(void* arg);
@@ -78,12 +78,12 @@ protected:
 	void StopWorkerAndWaitRestart();
 	void SafeStartWorker();
 
-	// ´íÎó´¦ÀíÏà¹Ø
+	// é”™è¯¯å¤„ç†ç›¸å…³
 	void ClearThreadData();
 	void ConnectionErrorHandling();
 	void UnknownErrorHandling();
 
-	// ·¢ËÍÇëÇóÏß³ÌÏà¹Ø
+	// å‘é€è¯·æ±‚çº¿ç¨‹ç›¸å…³
 	BlockingQueue<ReqInfo> m_BlockingQue;
 	HANDLE m_EntryReqWorkerThread;
 	unsigned int m_EntryReqWorkerThreadID;
@@ -91,7 +91,7 @@ protected:
 	void RequestWorker();
 	void StopRequestWorker();
 
-	// Í¨ÖªÏìÓ¦Ïß³ÌÏà¹Ø
+	// é€šçŸ¥å“åº”çº¿ç¨‹ç›¸å…³
 	std::mutex m_ResRegistryMtx;
 	std::unordered_map<uint32_t, std::list<ResInfo>> m_ResRegistry;
 	HANDLE m_EntryResWorkerThread;

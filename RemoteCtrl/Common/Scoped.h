@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 
 template <typename T, typename Deleter>
 class Scoped
@@ -17,11 +17,11 @@ public:
 
 	T get() const { return _resource; }
 
-	// ½ûÓÃ¸´ÖÆ
+	// ç¦ç”¨å¤åˆ¶
 	Scoped(const Scoped&) = delete;
 	Scoped& operator=(const Scoped&) = delete;
 
-	// Ö§³ÖÒÆ¶¯
+	// æ”¯æŒç§»åŠ¨
 	Scoped(Scoped&& other) noexcept
 		: _resource(other._resource), _deleter(other._deleter), _valid(other._valid)
 	{

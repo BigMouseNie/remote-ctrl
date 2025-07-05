@@ -1,4 +1,4 @@
-#include "pch.h"
+ï»¿#include "pch.h"
 #include "ClientController.h"
 #include "ClientSocket.h"
 #include "resource.h"
@@ -71,9 +71,9 @@ void CClientController::CleanupHandles() {
 }
 
 /**
- * @return : Ğ¡ÓÚµÈÓÚ0Ê§°Ü
+ * @return : å°äºç­‰äº0å¤±è´¥
  */
-int CClientController::InitController()	// ´´½¨Ïß³Ì¿ØÖÆÏß³ÌÒÔ¼°¹¤×÷Ïß³Ì
+int CClientController::InitController()	// åˆ›å»ºçº¿ç¨‹æ§åˆ¶çº¿ç¨‹ä»¥åŠå·¥ä½œçº¿ç¨‹
 {
 	m_EntryCtrlThread = (HANDLE)_beginthreadex(NULL, 0, EntryCtrlThread, this, 0, &m_EntryCtrlThreadID);
 	SafeStartEntryThread();
@@ -81,7 +81,7 @@ int CClientController::InitController()	// ´´½¨Ïß³Ì¿ØÖÆÏß³ÌÒÔ¼°¹¤×÷Ïß³Ì
 }
 
 /**
- * @brief : ÒÔÄ£Ì¬µÄĞÎÊ½Æô¶¯Ö÷´°¿Ú
+ * @brief : ä»¥æ¨¡æ€çš„å½¢å¼å¯åŠ¨ä¸»çª—å£
  */
 int CClientController::Invoke(CWnd*& outPMainWnd)
 {
@@ -116,7 +116,7 @@ int CClientController::RegisterResponse(uint32_t handlerID, Packet** ppOutPacket
 	return 0;
 }
 
-unsigned int __stdcall CClientController::EntryCtrlThread(void* arg)	// Ïß³Ì¿ØÖÆÏß³ÌÈçºÎÆô¶¯´ı¶¨
+unsigned int __stdcall CClientController::EntryCtrlThread(void* arg)	// çº¿ç¨‹æ§åˆ¶çº¿ç¨‹å¦‚ä½•å¯åŠ¨å¾…å®š
 {
 	CClientController* thiz = static_cast<CClientController*>(arg);
 	thiz->CtrlThread();
@@ -163,8 +163,8 @@ void CClientController::CtrlThread()
 			break;
 
 		case WM_USER_CONNECTIONERR:
-			StopWorkerAndWaitRestart();				// Í£Ö¹¹¤×÷
-			// Çå¿Õ´íÎó´¦ÀíÏà¹ØĞÅÏ¢,Ïß³ÌµÄ¶Ï¿ªÈ·±£ÇåÀíÖ®ºó²»»áÓĞÆäËû´íÎóÏûÏ¢
+			StopWorkerAndWaitRestart();				// åœæ­¢å·¥ä½œ
+			// æ¸…ç©ºé”™è¯¯å¤„ç†ç›¸å…³ä¿¡æ¯,çº¿ç¨‹çš„æ–­å¼€ç¡®ä¿æ¸…ç†ä¹‹åä¸ä¼šæœ‰å…¶ä»–é”™è¯¯æ¶ˆæ¯
 			while (::PeekMessage(&tmpMsg, NULL, WM_USER_ERRHANDLER_MINVALID, WM_USER_ERRHANDLER_MAXVALID, PM_REMOVE)) {}
 			ConnectionErrorHandling();
 			break;
@@ -191,7 +191,7 @@ void CClientController::StopEntryThread()
 	if (m_WorkerRunning) { StopWorkerAndWaitRestart(); }
 	if (m_EntryThreadRunning) {
 		m_EntryThreadRunning = false;
-		SetEvent(m_RequestWorkerCtrlSignal[0]);	// ĞèÒªÓÃÆô¶¯ÊÂ¼ş»½ĞÑ EnrtyThread Ê¹ÆäÍË³ö
+		SetEvent(m_RequestWorkerCtrlSignal[0]);	// éœ€è¦ç”¨å¯åŠ¨äº‹ä»¶å”¤é†’ EnrtyThread ä½¿å…¶é€€å‡º
 		SetEvent(m_ResponseWorkerCtrlSignal[0]);
 		CloseHandle(m_EntryReqWorkerThread); m_EntryReqWorkerThread = NULL;
 		CloseHandle(m_EntryResWorkerThread); m_EntryResWorkerThread = NULL;
@@ -212,15 +212,15 @@ void CClientController::SafeStartWorker()
 {
 	if (m_WorkerRunning) { return; }
 
-	// ÖØÖÃÏà¹ØÊÂ¼ş
+	// é‡ç½®ç›¸å…³äº‹ä»¶
 	ResetEvent(m_RequestWorkerCtrlSignal[1]);
 	ResetEvent(m_ResponseWorkerCtrlSignal[1]);
 	ResetEvent(m_WorkerStopSyncSignal);
 
-	// µ±¹¤×÷º¯ÊıÆô¶¯Ê±¿ªÊ¼Ñ­»·
+	// å½“å·¥ä½œå‡½æ•°å¯åŠ¨æ—¶å¼€å§‹å¾ªç¯
 	m_WorkerRunning = true;
 
-	// Í¨ÖªEntryThreadÆô¶¯¹¤×÷º¯Êı
+	// é€šçŸ¥EntryThreadå¯åŠ¨å·¥ä½œå‡½æ•°
 	SetEvent(m_RequestWorkerCtrlSignal[0]);
 	SetEvent(m_ResponseWorkerCtrlSignal[0]);
 }
@@ -229,16 +229,16 @@ void CClientController::StopWorkerAndWaitRestart()
 {
 	if (!m_WorkerRunning) { return; }
 
-	// ·ÀÖ¹EntryÏß³ÌÖØĞÂ¹¤×÷º¯Êı
+	// é˜²æ­¢Entryçº¿ç¨‹é‡æ–°å·¥ä½œå‡½æ•°
 	ResetEvent(m_RequestWorkerCtrlSignal[0]);
 	ResetEvent(m_ResponseWorkerCtrlSignal[0]);
 
-	// Ê¹¹¤×÷º¯ÊıÍ£Ö¹Ñ­»·(Ã»ÓĞÍË³ö)
+	// ä½¿å·¥ä½œå‡½æ•°åœæ­¢å¾ªç¯(æ²¡æœ‰é€€å‡º)
 	m_WorkerRunning = false;
 	StopRequestWorker();
 	StopResponseWorker();
 
-	// ¹¤×÷º¯ÊıÍË³ö,²¢µÈ´ıEntryThread½áÊøĞÅºÅ,±£Ö¤¸Ãº¯Êı·µ»ØºóEntryThread¶¼×èÈûÔÚµÈ´ıÖØĞÂÆô¶¯¹¤×÷º¯ÊıµÄÎ»ÖÃ
+	// å·¥ä½œå‡½æ•°é€€å‡º,å¹¶ç­‰å¾…EntryThreadç»“æŸä¿¡å·,ä¿è¯è¯¥å‡½æ•°è¿”å›åEntryThreadéƒ½é˜»å¡åœ¨ç­‰å¾…é‡æ–°å¯åŠ¨å·¥ä½œå‡½æ•°çš„ä½ç½®
 	SetEvent(m_WorkerStopSyncSignal);
 	WaitForSingleObject(m_RequestWorkerCtrlSignal[1], INFINITE);
 	WaitForSingleObject(m_ResponseWorkerCtrlSignal[1], INFINITE);
@@ -275,10 +275,10 @@ unsigned int __stdcall CClientController::EntryReqWorkerThread(void* arg)
 {
 	CClientController* thiz = static_cast<CClientController*>(arg);
 	while (thiz->m_EntryThreadRunning) {
-		WaitForSingleObject(thiz->m_RequestWorkerCtrlSignal[0], INFINITE);	// µÈ´ıÆô¶¯ÊÂ¼ş
+		WaitForSingleObject(thiz->m_RequestWorkerCtrlSignal[0], INFINITE);	// ç­‰å¾…å¯åŠ¨äº‹ä»¶
 		if (!thiz->m_EntryThreadRunning) { break; }
 		thiz->RequestWorker();
-		SetEvent(thiz->m_RequestWorkerCtrlSignal[1]);	// ´¥·¢Ïß³Ì½áÊøÊÂ¼ş
+		SetEvent(thiz->m_RequestWorkerCtrlSignal[1]);	// è§¦å‘çº¿ç¨‹ç»“æŸäº‹ä»¶
 	}
 	_endthreadex(0);
 	return 0;
@@ -316,11 +316,11 @@ unsigned int __stdcall CClientController::EntryResWorkerThread(void* arg)
 {
 	CClientController* thiz = static_cast<CClientController*>(arg);
 	while (thiz->m_EntryThreadRunning) {
-		WaitForSingleObject(thiz->m_ResponseWorkerCtrlSignal[0], INFINITE);	// µÈ´ıÆô¶¯ÊÂ¼ş
+		WaitForSingleObject(thiz->m_ResponseWorkerCtrlSignal[0], INFINITE);	// ç­‰å¾…å¯åŠ¨äº‹ä»¶
 		TRACE("%s : \n", __FUNCTION__);
 		if (!thiz->m_EntryThreadRunning) { break; }
 		thiz->ResponseWorker();
-		SetEvent(thiz->m_ResponseWorkerCtrlSignal[1]);	// ´¥·¢Ïß³Ì½áÊøÊÂ¼ş
+		SetEvent(thiz->m_ResponseWorkerCtrlSignal[1]);	// è§¦å‘çº¿ç¨‹ç»“æŸäº‹ä»¶
 	}
 	_endthreadex(0);
 	return 0;

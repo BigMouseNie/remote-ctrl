@@ -1,11 +1,11 @@
-#include "pch.h"
+ï»¿#include "pch.h"
 #include "CmdHandler.h"
 #include "Scoped.h"
 #include "resource.h"
 
 #include <direct.h>
 #include <atlimage.h>
-#include <objidl.h>   // ÒÀÀµÏî
+#include <objidl.h>   // ä¾èµ–é¡¹
 #include <gdiplus.h>
 
 ChecksumType CCmdHandler::DefCsType = ChecksumType::CT_SUM;
@@ -28,7 +28,7 @@ const std::unordered_map<uint32_t, DealPacketCallBack> CCmdHandler::IdxCmdHandle
 std::atomic<bool> CCmdHandler::isRelese = false;
 
 std::condition_variable CCmdHandler::NoWait;
-const size_t CCmdHandler::MaxidleSec = 30;	// µ÷ÊÔÊ±¾¡Á¿´ó
+const size_t CCmdHandler::MaxidleSec = 30;	// è°ƒè¯•æ—¶å°½é‡å¤§
 std::mutex CCmdHandler::FDSMapMtx;
 std::map<uint32_t, FileDownloadSession*> CCmdHandler::FDSMap;
 HANDLE CCmdHandler::FDSRecycleThreadHANDLE = nullptr;
@@ -163,7 +163,7 @@ int CCmdHandler::LIST_FILE_handler(const Packet& inPacket, Packet** ppOutPacket)
 	FileNameLen flenVal;
 	size_t sendTotalBytes = 0;
 	do {
-		// ºöÂÔ . ºÍ .. ÒÔ¼°ÏµÍ³ÎÄ¼ş
+		// å¿½ç•¥ . å’Œ .. ä»¥åŠç³»ç»Ÿæ–‡ä»¶
 		if (_tcscmp(findData.cFileName, _T(".")) == 0 ||
 			_tcscmp(findData.cFileName, _T("..")) == 0 ||
 			(findData.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM))
@@ -209,7 +209,7 @@ unsigned int __stdcall CCmdHandler::FDSRecycleThread(void* arg)
 			if (now - it->second->GetLastActiveTime() > MaxidleSec) {
 				FileDownloadSession* fds = it->second;
 				delete fds; fds = nullptr;
-				it = FDSMap.erase(it); // erase »á·µ»ØÏÂÒ»¸öÓĞĞ§µü´úÆ÷
+				it = FDSMap.erase(it); // erase ä¼šè¿”å›ä¸‹ä¸€ä¸ªæœ‰æ•ˆè¿­ä»£å™¨
 			}
 			else {
 				++it;
@@ -399,10 +399,10 @@ int CCmdHandler::SEND_SCREEN_handler(const Packet& inPacket, Packet** ppOutPacke
 	if (SUCCEEDED(screen.Save(pStream, Gdiplus::ImageFormatJPEG))) {
 		STATSTG stat;
 		pStream->Stat(&stat, STATFLAG_NONAME);
-		ULONG size = (ULONG)stat.cbSize.QuadPart; // »ñÈ¡ÄÚ´æÁ÷µÄ´óĞ¡£¬¼´JPEGÊı¾İ³¤¶È
+		ULONG size = (ULONG)stat.cbSize.QuadPart; // è·å–å†…å­˜æµçš„å¤§å°ï¼Œå³JPEGæ•°æ®é•¿åº¦
 
 		LARGE_INTEGER liZero = {};
-		pStream->Seek(liZero, STREAM_SEEK_SET, NULL); // Ö¸ÕëÖØÖÃµ½Á÷¿ªÍ·
+		pStream->Seek(liZero, STREAM_SEEK_SET, NULL); // æŒ‡é’ˆé‡ç½®åˆ°æµå¼€å¤´
 
 		ULONG bytesRead = 0;
 		RawBuffer rawBuf(outPacket.body, size);
@@ -432,8 +432,8 @@ int CCmdHandler::MOUSE_EVENT_handler(const Packet& inPacket, Packet** ppOutPacke
 void CCmdHandler::SimulateMouseClick(const MouseEventBody& meb)
 {
 	WHXY curWinWH;
-	curWinWH.WX = GetSystemMetrics(SM_CXSCREEN);  // ÆÁÄ»¿í¶È
-	curWinWH.HY = GetSystemMetrics(SM_CYSCREEN); // ÆÁÄ»¸ß¶È
+	curWinWH.WX = GetSystemMetrics(SM_CXSCREEN);  // å±å¹•å®½åº¦
+	curWinWH.HY = GetSystemMetrics(SM_CYSCREEN); // å±å¹•é«˜åº¦
 
 	WHXY curPos = meb.GetCurWinXY(curWinWH);
 
@@ -514,8 +514,8 @@ unsigned __stdcall CCmdHandler::ThreadLockMachine(void* arg)
 	CRect rect;
 	rect.left = 0;
 	rect.top = 0;
-	int screenWidth = ::GetSystemMetrics(SM_CXSCREEN); // ÆÁÄ»¿í¶È
-	int screenHeight = ::GetSystemMetrics(SM_CYSCREEN); // ÆÁÄ»¸ß¶È
+	int screenWidth = ::GetSystemMetrics(SM_CXSCREEN); // å±å¹•å®½åº¦
+	int screenHeight = ::GetSystemMetrics(SM_CYSCREEN); // å±å¹•é«˜åº¦
 	rect.right = screenWidth;
 	rect.bottom = screenHeight;
 
@@ -534,7 +534,7 @@ unsigned __stdcall CCmdHandler::ThreadLockMachine(void* arg)
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
 		if (msg.message == WM_KEYDOWN) {
-			if (msg.wParam == 0x41) {
+			if (msg.wParam == 0x41) {   // 'A'é”®æŒ‰ä¸‹é€€å‡ºå¾ªç¯é”æœºç»“æŸ
 				break;
 			}
 		}
@@ -570,7 +570,7 @@ int CCmdHandler::UNLOCK_MACHINE_handler(const Packet& inPacket, Packet** ppOutPa
 {
 	*ppOutPacket = nullptr;	// no reply
 	if (IsLockedMachine) {
-		PostThreadMessage(lockDlgTID, WM_KEYDOWN, 0x41, 0);
+		PostThreadMessage(lockDlgTID, WM_KEYDOWN, 0x41, 0); // å°†'A'é”®æŒ‰ä¸‹æ¶ˆæ¯å‘é€åˆ°æ¶ˆæ¯é˜Ÿåˆ—
 	}
 	return 0;
 }

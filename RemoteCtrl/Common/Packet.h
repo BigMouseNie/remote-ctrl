@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 
 #define PACKETHEADERMAGIC	0xFEFF
 #define PACKETVERSION		0x0001	// version : 0.0.0.1
@@ -68,7 +68,7 @@ public:
 
 	bool Write(const char* src, size_t lenToWrite);
 
-	bool Write(const Buffer& srcPeekBuf, size_t lenToWrite);	// ²»ÒÆ¶¯ srcBufµÄ¶ÁĞ´Ö¸Õë
+	bool Write(const Buffer& srcPeekBuf, size_t lenToWrite);	// ä¸ç§»åŠ¨ srcBufçš„è¯»å†™æŒ‡é’ˆ
 	bool Write(Buffer& srcBuf, size_t lenToWrite);
 
 	bool TryPeekExact(char* dest, size_t lenToRead) const;
@@ -88,10 +88,10 @@ public:
 
 private:
 	char* data;						// data
-	char* readptr;					// ¶ÁÖ¸Õë
-	char* writeptr;					// Ğ´Ö¸Õë
-	size_t readable;				// ¿É¶Á×Ö½Ú
-	size_t writable;				// ¿ÉĞ´×Ö½Ú
+	char* readptr;					// è¯»æŒ‡é’ˆ
+	char* writeptr;					// å†™æŒ‡é’ˆ
+	size_t readable;				// å¯è¯»å­—èŠ‚
+	size_t writable;				// å¯å†™å­—èŠ‚
 	size_t size;					// size
 
 	void Written(size_t bytes);
@@ -126,14 +126,14 @@ private:
 
 struct PacketHeader
 {
-	uint16_t magic;					// ¹Ì¶¨Ä§Êı 0xFEFF£¬ÓÃÓÚ°üÆğÊ¼ÑéÖ¤
-	uint16_t version;				// Ğ­Òé°æ±¾ºÅ
-	uint16_t checksumType;			// Ğ£Ñé·½Ê½
-	uint32_t checksum;				// Ğ£ÑéÖµ
-	uint32_t statusCode;			// ×´Ì¬
+	uint16_t magic;					// å›ºå®šé­”æ•° 0xFEFFï¼Œç”¨äºåŒ…èµ·å§‹éªŒè¯
+	uint16_t version;				// åè®®ç‰ˆæœ¬å·
+	uint16_t checksumType;			// æ ¡éªŒæ–¹å¼
+	uint32_t checksum;				// æ ¡éªŒå€¼
+	uint32_t statusCode;			// çŠ¶æ€
 	uint32_t handleID;
-	MessageType messageType;		// ÏûÏ¢ÀàĞÍ
-	uint32_t bodyLength;			// °üÌå³¤¶È
+	MessageType messageType;		// æ¶ˆæ¯ç±»å‹
+	uint32_t bodyLength;			// åŒ…ä½“é•¿åº¦
 
 	PacketHeader()
 		: magic(0), version(0), checksumType(0), checksum(0),
@@ -175,8 +175,8 @@ struct Packet
 
 enum class RecvState : size_t
 {
-	WAIT_HEADER,					// µÈ´ı¶Á°üÍ·	
-	WAIT_BODY,						// µÈ´ı¶Á°üÌå
+	WAIT_HEADER,					// ç­‰å¾…è¯»åŒ…å¤´	
+	WAIT_BODY,						// ç­‰å¾…è¯»åŒ…ä½“
 };
 
 class CPacketHandler
@@ -217,8 +217,8 @@ private:
 	SOCKET sock;
 	Buffer recvbuf;
 	Buffer sendbuf;
-	RecvState state;				// ×´Ì¬
+	RecvState state;				// çŠ¶æ€
 	Buffer forRecvPHBuf;
-	PacketHeader curRecvPH;			// stateÎªWAIT_BODYÊ±ÓĞĞ§
+	PacketHeader curRecvPH;			// stateä¸ºWAIT_BODYæ—¶æœ‰æ•ˆ
 	std::mutex sendMtx;
 };
