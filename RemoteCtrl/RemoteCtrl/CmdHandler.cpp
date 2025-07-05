@@ -580,7 +580,7 @@ uint32_t FileDownloadSession::nextFileID = 1;
 bool FileDownloadSession::OpenFile(const char* fPath)
 {
 	if (pf) { fclose(pf); pf = nullptr; }
-	pf = fopen(fPath, "rb");
+    pf = fopen(fPath, "rb");
 	if (pf == nullptr) {
 		return false;
 	}

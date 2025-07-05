@@ -76,8 +76,8 @@ BOOL CMonitorWin::OnInitDialog()
 	CDialogEx::OnInitDialog();
 
 	// TODO:  在此添加额外的初始化
-	m_picture.GetWindowRect(&m_pictureRect);
-	ScreenToClient(&m_pictureRect);
+    m_picture.GetClientRect(&m_pictureRect);
+    TRACE("%s : %d,%d,%d,%d\n", __FUNCTION__, m_pictureRect.left, m_pictureRect.top, m_pictureRect.right, m_pictureRect.bottom);
 	return TRUE;  // return TRUE unless you set the focus to a control
 				  // 异常: OCX 属性页应返回 FALSE
 }
@@ -96,9 +96,13 @@ void CMonitorWin::DrawFrame(const Buffer& frameBuf)
 	m_cachedImage.Destroy();
 
 	if (SUCCEEDED(m_cachedImage.Load(pStream))) {
-		CClientDC dc(&m_picture);
-		dc.SetStretchBltMode(HALFTONE);
-		m_cachedImage.Draw(dc, m_pictureRect);
+        CDC* pDC = m_picture.GetDC();
+        if (pDC) {
+            pDC->SetStretchBltMode(HALFTONE);
+            ::SetBrushOrgEx(pDC->GetSafeHdc(), 0, 0, nullptr);
+            m_cachedImage.Draw(pDC->GetSafeHdc(), m_pictureRect);
+            m_picture.ReleaseDC(pDC);
+        }
 	}
 	pStream->Release();
 }

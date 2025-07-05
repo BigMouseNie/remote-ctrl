@@ -39,7 +39,6 @@ private:
 	void DealMouseEvent(CPoint point, MouseEventBody& meb);
 
 private:
-	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg void OnMButtonDblClk(UINT nFlags, CPoint point);
 	afx_msg void OnMButtonDown(UINT nFlags, CPoint point);
 	afx_msg void OnMButtonUp(UINT nFlags, CPoint point);

@@ -27,7 +27,6 @@ CClientController::CClientController() :
 
 CClientController::~CClientController()
 {
-	TRACE("%s : \n", __FUNCTION__);
 	if (m_EntryCtrlThread) {
 		PostMsgToCtrlThread(WM_USER_STOPENTRYTHREAD);
 		PostMsgToCtrlThread(WM_USER_STOPCTRLTHREAD);
@@ -317,7 +316,6 @@ unsigned int __stdcall CClientController::EntryResWorkerThread(void* arg)
 	CClientController* thiz = static_cast<CClientController*>(arg);
 	while (thiz->m_EntryThreadRunning) {
 		WaitForSingleObject(thiz->m_ResponseWorkerCtrlSignal[0], INFINITE);	// 等待启动事件
-		TRACE("%s : \n", __FUNCTION__);
 		if (!thiz->m_EntryThreadRunning) { break; }
 		thiz->ResponseWorker();
 		SetEvent(thiz->m_ResponseWorkerCtrlSignal[1]);	// 触发线程结束事件
