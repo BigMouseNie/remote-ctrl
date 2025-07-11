@@ -1,4 +1,4 @@
-#include "pch.h"
+ï»¿#include "pch.h"
 #include "Body.h"
 
 bool FileListBody::Serialize(const FileListBody& inFLBody, Buffer& outStream)
@@ -25,7 +25,7 @@ bool FileListBody::Deserialize(const Buffer& inStream, FileListBody& outFLBody)
 	size_t readable = inStream.Readable();
 	size_t readLen = 0;
 
-	// Ìî³ä fileCnt
+	// å¡«å…… fileCnt
 	if (readable < sizeof(FileCnt)) {
 		outFLBody.Clear(); return false;
 	}
@@ -34,28 +34,28 @@ bool FileListBody::Deserialize(const Buffer& inStream, FileListBody& outFLBody)
 	readable -= sizeof(FileCnt);
 	readLen += sizeof(FileCnt);
 
-	// ÌáÇ°¼ì²é³¤¶ÈÎÊÌâ
+	// æå‰æ£€æŸ¥é•¿åº¦é—®é¢˜
 	size_t fileTypeArrBytes = sizeof(FileType) * outFLBody.fileCnt;
 	size_t fileNameArrBytes = sizeof(FileNameLen) * outFLBody.fileCnt;
 	if (readable < fileTypeArrBytes + fileNameArrBytes) {
 		outFLBody.Clear(); return false;
 	}
 
-	// Ìî³ä fileTypes
+	// å¡«å…… fileTypes
 	if (!outFLBody.fileTypes.Write(inReadPtr + readLen, fileTypeArrBytes)) {
 		outFLBody.Clear(); return false;
 	}
 	readable -= fileTypeArrBytes;
 	readLen += fileTypeArrBytes;
 
-	// Ìî³ä fileNameLens
+	// å¡«å…… fileNameLens
 	if (!outFLBody.fileNameLens.Write(inReadPtr + readLen, fileNameArrBytes)) {
 		outFLBody.Clear(); return false;
 	}
 	readable -= fileNameArrBytes;
 	readLen += fileNameArrBytes;
 
-	// Ìî³ä fileNameBuffer
+	// å¡«å…… fileNameBuffer
 	const FileNameLen* fileNameLenArr =
 		reinterpret_cast<const FileNameLen*>(outFLBody.fileNameLens.GetReadPtr());
 	size_t totalFileNameLen = 0;

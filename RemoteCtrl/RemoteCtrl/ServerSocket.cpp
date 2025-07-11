@@ -1,12 +1,12 @@
-#include "pch.h"
+ï»¿#include "pch.h"
 #include "ServerSocket.h"
 
 CServerSocket::CServerSocket()
 	: m_sock(INVALID_SOCKET), m_clnt_sock(INVALID_SOCKET)
 {
 	if (!InitSockEnv()) {
-		MessageBox(NULL, _T("ÎŞ·¨³õÊ¼»¯Ì×½Ó×Ö»·¾³,Çë¼ì²éÍøÂç!"),
-			_T("³õÊ¼»¯Ê§°Ü"), MB_OK | MB_ICONERROR);
+		MessageBox(NULL, _T("æ— æ³•åˆå§‹åŒ–å¥—æ¥å­—ç¯å¢ƒ,è¯·æ£€æŸ¥ç½‘ç»œ!"),
+			_T("åˆå§‹åŒ–å¤±è´¥"), MB_OK | MB_ICONERROR);
 		exit(0);
 	}
 }	
@@ -35,7 +35,7 @@ BOOL CServerSocket::InitSockEnv()
 BOOL CServerSocket::InitSocket(uint16_t port)
 {
 	m_sock = socket(PF_INET, SOCK_STREAM, 0);
-	// TODO: Ğ£Ñé
+	// TODO: æ ¡éªŒ
 	if (m_sock == INVALID_SOCKET) {
 		return FALSE;
 	}
@@ -64,8 +64,8 @@ BOOL CServerSocket::InitSocket(uint16_t port)
 int CServerSocket::Run(DealPacketCallBack dpcb, uint16_t port)
 {
 	if (!InitSocket(port)) {
-		MessageBox(NULL, _T("³õÊ¼»¯Ì×½Ó×ÖÊ§°Ü!"),
-			_T("³õÊ¼»¯Ê§°Ü"), MB_OK | MB_ICONERROR);
+		MessageBox(NULL, _T("åˆå§‹åŒ–å¥—æ¥å­—å¤±è´¥!"),
+			_T("åˆå§‹åŒ–å¤±è´¥"), MB_OK | MB_ICONERROR);
 		return -1;
 	}
 
