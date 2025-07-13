@@ -1,11 +1,10 @@
-#pragma once
+ï»¿#pragma once
 
 #include <iostream>
 
 template <typename T>
 class Singleton {
 public:
-	// ½ûÖ¹¿½±´¹¹ÔìºÍ¸³Öµ
 	Singleton(const Singleton&) = delete;
 	Singleton& operator=(const Singleton&) = delete;
 
