@@ -1,11 +1,11 @@
-#pragma once
+ï»¿#pragma once
 
 #include "Packet.h"
 
 using FileCnt = uint32_t;
 using FileNameLen = uint16_t;
 
-enum FileType : char
+enum FileType : uint8_t
 {
 	FT_FILE,
 	FT_DIR,
@@ -15,9 +15,9 @@ enum FileType : char
 struct FileListBody
 {
 	FileCnt fileCnt;
-	Buffer fileTypes;			// °´FileType(Ã¶¾Ù)¶ÁÈ¡
-	Buffer fileNameLens;		// °´FileNameLen¶ÁÈ¡£¬Ã¿¸öÎÄ¼şÃûµÄ³¤¶È
-	Buffer fileNameBuffer;		// °´char¶ÁÈ¡£¬Æ´½ÓºóµÄÎÄ¼şÃû
+	Buffer fileTypes;			// æŒ‰FileType(æšä¸¾)è¯»å–
+	Buffer fileNameLens;		// æŒ‰FileNameLenè¯»å–ï¼Œæ¯ä¸ªæ–‡ä»¶åçš„é•¿åº¦
+	Buffer fileNameBuffer;		// æŒ‰charè¯»å–ï¼Œæ‹¼æ¥åçš„æ–‡ä»¶å
 
 	FileListBody() : fileCnt(0) {}
 	void Clear() {
@@ -55,12 +55,12 @@ struct ReqFileBody
 
 struct FileBody
 {
-	uint32_t fileID;			// ÎÄ¼şÎ¨Ò»ID£¬»òHashÖµ
-	uint32_t isLastChunk;		// ÊÇ·ñÊÇ×îºóÒ»¿é£¨1 ±íÊ¾ÊÇ£¬0 ±íÊ¾»¹ÓĞ£©
-	uint32_t chunkSize;			// µ±Ç°¿éµÄÊı¾İ³¤¶È
-	uint64_t offset;			// µ±Ç°¿éÔÚÕû¸öÎÄ¼şÖĞµÄÆ«ÒÆÎ»ÖÃ
-	uint64_t totalSize;			// ÎÄ¼ş×Ü³¤¶È
-	Buffer chunk;				// µ±Ç°¿éÊı¾İ
+	uint32_t fileID;			// æ–‡ä»¶å”¯ä¸€IDï¼Œæˆ–Hashå€¼
+	uint32_t isLastChunk;		// æ˜¯å¦æ˜¯æœ€åä¸€å—ï¼ˆ1 è¡¨ç¤ºæ˜¯ï¼Œ0 è¡¨ç¤ºè¿˜æœ‰ï¼‰
+	uint32_t chunkSize;			// å½“å‰å—çš„æ•°æ®é•¿åº¦
+	uint64_t offset;			// å½“å‰å—åœ¨æ•´ä¸ªæ–‡ä»¶ä¸­çš„åç§»ä½ç½®
+	uint64_t totalSize;			// æ–‡ä»¶æ€»é•¿åº¦
+	Buffer chunk;				// å½“å‰å—æ•°æ®
 	FileBody() :fileID(0), isLastChunk(0), chunkSize(0), offset(0), totalSize(0) {}
 	void Clear() {
 		fileID = 0;

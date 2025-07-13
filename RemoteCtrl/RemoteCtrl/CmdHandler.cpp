@@ -12,18 +12,18 @@ ChecksumType CCmdHandler::DefCsType = ChecksumType::CT_SUM;
 bool CCmdHandler::IsLockedMachine = false;
 CLockDialog CCmdHandler::lockDlg;
 unsigned int CCmdHandler::lockDlgTID;
-const std::unordered_map<uint32_t, DealPacketCallBack> CCmdHandler::IdxCmdHandler = {
-	{ CMD_TEST,					&TEST_handler },
-	{ CMD_DISK_PART,			&DISK_PART_handler },
-	{ CMD_LIST_FILE,			&LIST_FILE_handler },
-	{ CMD_RUN_FILE,				&RUN_FILE_handler },
-	{ CMD_DEL_FILE,				&DEL_FILE_handler },
-	{ CMD_DOWNLOAD_FILE,		&DOWNLOAD_FILE_handler },
-	{ CMD_SEND_SCREEN,			&SEND_SCREEN_handler },
-	{ CMD_MOUSE_EVENT,			&MOUSE_EVENT_handler },
-	{ CMD_LOCK_MACHINE,			&LOCK_MACHINE_handler },
-	{ CMD_UNLOCK_MACHINE,		&UNLOCK_MACHINE_handler },
-	{ CMD_INVALID_VALUE,		NULL }
+const std::unordered_map<CommandType, DealPacketCallBack> CCmdHandler::IdxCmdHandler = {
+	{ CommandType::CMD_TEST,				&TEST_handler },
+	{ CommandType::CMD_DISK_PART,			&DISK_PART_handler },
+	{ CommandType::CMD_LIST_FILE,			&LIST_FILE_handler },
+	{ CommandType::CMD_RUN_FILE,			&RUN_FILE_handler },
+	{ CommandType::CMD_DEL_FILE,			&DEL_FILE_handler },
+	{ CommandType::CMD_DOWNLOAD_FILE,		&DOWNLOAD_FILE_handler },
+	{ CommandType::CMD_SEND_SCREEN,			&SEND_SCREEN_handler },
+	{ CommandType::CMD_MOUSE_EVENT,			&MOUSE_EVENT_handler },
+	{ CommandType::CMD_LOCK_MACHINE,		&LOCK_MACHINE_handler },
+	{ CommandType::CMD_UNLOCK_MACHINE,		&UNLOCK_MACHINE_handler },
+	{ CommandType::CMD_INVALID_VALUE,		NULL }
 };
 std::atomic<bool> CCmdHandler::isRelese = false;
 
@@ -87,7 +87,7 @@ ChecksumType CCmdHandler::GetChecksumType()
 
 int CCmdHandler::DealPacket(const Packet& inPacket, Packet** ppOutPacket)
 {
-	uint16_t cmd = inPacket.header.messageType & EXTRACTIONCMD;
+    CommandType cmd = static_cast<CommandType>(inPacket.header.messageType & EXTRACTIONCMD);
 	if (cmd >= CommandType::CMD_INVALID_VALUE) {
 		return -1;
 	}
@@ -106,14 +106,15 @@ int CCmdHandler::DealPacket(const Packet& inPacket, Packet** ppOutPacket)
 int CCmdHandler::TEST_handler(const Packet& inPacket, Packet** ppOutPacket)
 {
 	Packet& outPacket = **ppOutPacket;
+    outPacket.header.handleID = inPacket.header.handleID;
 	if (inPacket.body.TryPeekExact(outPacket.body, inPacket.header.bodyLength)) {
-		CPacketHandler::BuildPacketHeaderInPacket(outPacket, StatusCode::SC_OK, DefCsType,
-					inPacket.header.handleID, ReqRes::RR_RESPONSE | CommandType::CMD_TEST);
+		CPacketHandler::BuildPacketHeaderInPacket(outPacket, DefCsType,
+			ReqRes::RR_RESPONSE | CommandType::CMD_TEST, StatusCode::SC_OK);
 	}
 	else {
 		outPacket.body.Clear();
-		CPacketHandler::BuildPacketHeaderInPacket(outPacket, StatusCode::SC_ERR_PACKET, DefCsType,
-					inPacket.header.handleID, ReqRes::RR_RESPONSE | CommandType::CMD_TEST);
+		CPacketHandler::BuildPacketHeaderInPacket(outPacket, DefCsType,
+            ReqRes::RR_RESPONSE | CommandType::CMD_TEST, StatusCode::SC_ERR_PACKET);
 	}
 	return 0;
 }
@@ -121,6 +122,7 @@ int CCmdHandler::TEST_handler(const Packet& inPacket, Packet** ppOutPacket)
 int CCmdHandler::DISK_PART_handler(const Packet& inPacket, Packet** ppOutPacket)
 {
 	Packet& outPacket = **ppOutPacket;
+    outPacket.header.handleID = inPacket.header.handleID;
 	uint32_t diskPart = 0;
 	uint32_t flag = 1;
 	for (int i = 1; i < 26; ++i) {
@@ -131,19 +133,20 @@ int CCmdHandler::DISK_PART_handler(const Packet& inPacket, Packet** ppOutPacket)
 	}
 
 	outPacket.body.Write(reinterpret_cast<char*>(&diskPart), sizeof(uint32_t) / sizeof(char));
-	CPacketHandler::BuildPacketHeaderInPacket(outPacket, StatusCode::SC_OK, DefCsType,
-				inPacket.header.handleID, ReqRes::RR_RESPONSE | CommandType::CMD_DISK_PART);
+	CPacketHandler::BuildPacketHeaderInPacket(outPacket, DefCsType,
+        ReqRes::RR_RESPONSE | CommandType::CMD_DISK_PART, StatusCode::SC_OK);
 	return 0;
 }
 
 int CCmdHandler::LIST_FILE_handler(const Packet& inPacket, Packet** ppOutPacket)
 {
 	Packet& outPacket = **ppOutPacket;
+    outPacket.header.handleID = inPacket.header.handleID;
 	Buffer fPath;
 	if (!inPacket.body.TryPeekExact(fPath, inPacket.header.bodyLength)) {
 		outPacket.body.Clear();
-		CPacketHandler::BuildPacketHeaderInPacket(outPacket, StatusCode::SC_ERR_PACKET, DefCsType,
-					inPacket.header.handleID, ReqRes::RR_RESPONSE | CommandType::CMD_LIST_FILE);
+		CPacketHandler::BuildPacketHeaderInPacket(outPacket, DefCsType,
+            ReqRes::RR_RESPONSE | CommandType::CMD_LIST_FILE, StatusCode::SC_ERR_PACKET);
 		return 0;
 	}
 	fPath.Write("\\*\0", 4);
@@ -153,8 +156,8 @@ int CCmdHandler::LIST_FILE_handler(const Packet& inPacket, Packet** ppOutPacket)
 	Scoped<decltype(hFind), decltype(&FindClose)> scopedHFind(hFind, &FindClose);
 	if (hFind == INVALID_HANDLE_VALUE) {
 		outPacket.body.Clear();
-		CPacketHandler::BuildPacketHeaderInPacket(outPacket, StatusCode::SC_ERR_NOTFOUND, DefCsType,
-					inPacket.header.handleID, ReqRes::RR_RESPONSE | CommandType::CMD_LIST_FILE);
+        CPacketHandler::BuildPacketHeaderInPacket(outPacket, DefCsType,
+            ReqRes::RR_RESPONSE | CommandType::CMD_LIST_FILE, StatusCode::SC_ERR_NOTFOUND);
 		return 0;
 	}
 
@@ -187,13 +190,13 @@ int CCmdHandler::LIST_FILE_handler(const Packet& inPacket, Packet** ppOutPacket)
 	} while (FindNextFile(hFind, &findData));
 
 	if (FileListBody::Serialize(flBody, outPacket.body)) {
-		CPacketHandler::BuildPacketHeaderInPacket(outPacket, StatusCode::SC_OK, DefCsType,
-					inPacket.header.handleID, ReqRes::RR_RESPONSE | CommandType::CMD_LIST_FILE);
+        CPacketHandler::BuildPacketHeaderInPacket(outPacket, DefCsType,
+            ReqRes::RR_RESPONSE | CommandType::CMD_LIST_FILE, StatusCode::SC_OK);
 	}
 	else {
 		outPacket.body.Clear();
-		CPacketHandler::BuildPacketHeaderInPacket(outPacket, StatusCode::SC_ERR_INTERNAL, DefCsType,
-					inPacket.header.handleID, ReqRes::RR_RESPONSE | CommandType::CMD_LIST_FILE);
+        CPacketHandler::BuildPacketHeaderInPacket(outPacket, DefCsType,
+            ReqRes::RR_RESPONSE | CommandType::CMD_LIST_FILE, StatusCode::SC_ERR_INTERNAL);
 	}
 	return 0;
 }
@@ -293,10 +296,11 @@ void CCmdHandler::DOWNLOAD_FILE_PREV_handler(const ReqFileBody& rfBody, Buffer& 
 int CCmdHandler::DOWNLOAD_FILE_handler(const Packet& inPacket, Packet** ppOutPacket)
 {
 	Packet& outPacket = **ppOutPacket;
+    outPacket.header.handleID = inPacket.header.handleID;
 	ReqFileBody rfBody;
 	if (!ReqFileBody::Deserialize(inPacket.body, rfBody)) {
-		CPacketHandler::BuildPacketHeaderInPacket(outPacket, StatusCode::SC_ERR_PACKET, DefCsType,
-					inPacket.header.handleID, ReqRes::RR_RESPONSE | CommandType::CMD_DOWNLOAD_FILE);
+		CPacketHandler::BuildPacketHeaderInPacket(outPacket, DefCsType,
+            ReqRes::RR_RESPONSE | CommandType::CMD_DOWNLOAD_FILE, StatusCode::SC_ERR_PACKET);
 		return 0;
 	}
 	FileBody fBody;
@@ -321,23 +325,24 @@ int CCmdHandler::DOWNLOAD_FILE_handler(const Packet& inPacket, Packet** ppOutPac
 		break;
 
 	default:
-		scode = SC_ERR_PACKET;
+		scode = StatusCode::SC_ERR_PACKET;
 		break;
 	}
 
-	CPacketHandler::BuildPacketHeaderInPacket(outPacket, scode, DefCsType,
-		inPacket.header.handleID, ReqRes::RR_RESPONSE | CommandType::CMD_DOWNLOAD_FILE);
+    CPacketHandler::BuildPacketHeaderInPacket(outPacket, DefCsType,
+        ReqRes::RR_RESPONSE | CommandType::CMD_DOWNLOAD_FILE, scode);
 	return 0;
 }
 
 int CCmdHandler::RUN_FILE_handler(const Packet& inPacket, Packet** ppOutPacket)
 {
 	Packet& outPacket = **ppOutPacket;
+    outPacket.header.handleID = inPacket.header.handleID;
 	Buffer fPath;
 	if (!inPacket.body.TryPeekExact(fPath, inPacket.header.bodyLength)) {
 		outPacket.body.Clear();
-		CPacketHandler::BuildPacketHeaderInPacket(outPacket, StatusCode::SC_ERR_PACKET, DefCsType,
-					inPacket.header.handleID, ReqRes::RR_RESPONSE | CommandType::CMD_RUN_FILE);
+        CPacketHandler::BuildPacketHeaderInPacket(outPacket, DefCsType,
+            ReqRes::RR_RESPONSE | CommandType::CMD_RUN_FILE, StatusCode::SC_ERR_PACKET);
 		return 0;
 	}
 	fPath.Write("\0", 1);
@@ -346,19 +351,20 @@ int CCmdHandler::RUN_FILE_handler(const Packet& inPacket, Packet** ppOutPacket)
 	if (res <= 32) {
 		TRACE("%s : error code : %d\n", __FUNCTION__, res);
 	}
-	CPacketHandler::BuildPacketHeaderInPacket(outPacket, (res > 32) ? StatusCode::SC_OK : StatusCode::SC_ERR_INTERNAL,
-				DefCsType, inPacket.header.handleID, ReqRes::RR_RESPONSE | CommandType::CMD_RUN_FILE);
+    CPacketHandler::BuildPacketHeaderInPacket(outPacket, DefCsType,
+        ReqRes::RR_RESPONSE | CommandType::CMD_RUN_FILE, StatusCode::SC_OK);
 	return 0;
 }
 
 int CCmdHandler::DEL_FILE_handler(const Packet& inPacket, Packet** ppOutPacket)
 {
 	Packet& outPacket = **ppOutPacket;
+    outPacket.header.handleID = inPacket.header.handleID;
 	Buffer fPath;
 	if (!inPacket.body.TryPeekExact(fPath, inPacket.header.bodyLength)) {
 		outPacket.body.Clear();
-		CPacketHandler::BuildPacketHeaderInPacket(outPacket, StatusCode::SC_ERR_PACKET, DefCsType,
-					inPacket.header.handleID,ReqRes::RR_RESPONSE | CommandType::CMD_DEL_FILE);
+        CPacketHandler::BuildPacketHeaderInPacket(outPacket, DefCsType,
+            ReqRes::RR_RESPONSE | CommandType::CMD_DEL_FILE, StatusCode::SC_ERR_PACKET);
 		return 0;
 	}
 	fPath.Write("\0", 1);
@@ -367,14 +373,15 @@ int CCmdHandler::DEL_FILE_handler(const Packet& inPacket, Packet** ppOutPacket)
 	if (res == 0) {
 		TRACE("%s : error code : %ld\n", __FUNCTION__, GetLastError());
 	}
-	CPacketHandler::BuildPacketHeaderInPacket(outPacket, (res != 0) ? StatusCode::SC_OK : StatusCode::SC_ERR_INTERNAL,
-				DefCsType, inPacket.header.handleID, ReqRes::RR_RESPONSE | CommandType::CMD_DEL_FILE);
+    CPacketHandler::BuildPacketHeaderInPacket(outPacket, DefCsType,
+        ReqRes::RR_RESPONSE | CommandType::CMD_DEL_FILE, StatusCode::SC_OK);
 	return 0;
 }
 
 int CCmdHandler::SEND_SCREEN_handler(const Packet& inPacket, Packet** ppOutPacket)
 {
 	Packet& outPacket = **ppOutPacket;
+    outPacket.header.handleID = inPacket.header.handleID;
 
 	CImage screen;
 	HDC hScreen = ::GetDC(NULL);
@@ -390,8 +397,8 @@ int CCmdHandler::SEND_SCREEN_handler(const Packet& inPacket, Packet** ppOutPacke
 	IStream* pStream = SHCreateMemStream(nullptr, 0);
 	if (!pStream) {
 		outPacket.body.Clear();
-		CPacketHandler::BuildPacketHeaderInPacket(outPacket, StatusCode::SC_ERR_INTERNAL, DefCsType,
-			inPacket.header.handleID, ReqRes::RR_RESPONSE | CommandType::CMD_SEND_SCREEN);
+        CPacketHandler::BuildPacketHeaderInPacket(outPacket, ChecksumType::CT_NONE,
+            ReqRes::RR_RESPONSE | CommandType::CMD_SEND_SCREEN, StatusCode::SC_ERR_INTERNAL);
 		return false;
 	}
 
@@ -411,8 +418,8 @@ int CCmdHandler::SEND_SCREEN_handler(const Packet& inPacket, Packet** ppOutPacke
 		rawBuf.Written(bytesRead);
 	}
 
-	CPacketHandler::BuildPacketHeaderInPacket(outPacket, StatusCode::SC_OK, ChecksumType::CT_NONE,
-		inPacket.header.handleID, ReqRes::RR_RESPONSE | CommandType::CMD_SEND_SCREEN);
+    CPacketHandler::BuildPacketHeaderInPacket(outPacket, ChecksumType::CT_NONE,
+        ReqRes::RR_RESPONSE | CommandType::CMD_SEND_SCREEN, StatusCode::SC_OK);
 
 	return 0;
 }

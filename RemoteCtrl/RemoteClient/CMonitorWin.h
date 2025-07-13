@@ -3,6 +3,7 @@
 #include "Packet.h"
 #include "Body.h"
 #include "resource.h"
+#include "MapPacket.h"
 
 #include <atomic>
 
@@ -10,6 +11,9 @@
 #define WM_USER_STOPREMOTEMONITOR		(WM_USER + 2)
 #define WM_USER_ENABLEWINCTRL			(WM_USER + 3)
 #define WM_USER_DISABLEWINCTRL			(WM_USER + 4)
+#define WM_USER_FRAMEDATACOMING         (WM_USER + 5)
+#define WM_USER_LOCKMACHINE             (WM_USER + 6)
+#define WM_USER_UNLOCKMACHINE           (WM_USER + 7)
 
 #define WM_USER_REMOTEMONITOR_ERR		(WM_USER + 1000)
 
@@ -56,12 +60,15 @@ private:
 	afx_msg LRESULT OnStopRemoteMonitor(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnEnableWinCtrl(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnDisableWinCtrl(WPARAM wParam, LPARAM lParam);
+    afx_msg LRESULT OnFrameDataComing(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnRemoteMonitorErr(WPARAM wParam, LPARAM lParam);
+
 
 public:
 	void StartMonitoring();
 
 private:
+    MapPacket m_MapPacket;
 	CButton m_LockMachine;
 	CButton m_UnlockMachine;
 	CStatic m_picture;
@@ -73,6 +80,7 @@ private:
 	bool m_EnableWinCtrl;
 
 	// 监控线程相关
+    HANDLE m_HEvent;
 	std::atomic<bool> m_IsMonitoring;
 	std::atomic<bool> m_StopMonitoring;
 	unsigned int m_EntryRemoteMonitorThreadID;

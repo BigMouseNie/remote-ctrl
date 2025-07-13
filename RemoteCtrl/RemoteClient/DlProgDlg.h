@@ -2,11 +2,13 @@
 
 #include <atomic>
 #include "resource.h"
+#include "MapPacket.h"
 
-#define WM_USER_STARTDOWNLOAD	(WM_USER + 1)
-#define WM_USER_STOPDOWNLOAD	(WM_USER + 2)
-#define WM_USER_DOWNLOADPROG	(WM_USER + 3)
-#define WM_USER_DOWNLOADFINISH	(WM_USER + 4)
+#define WM_USER_STARTDOWNLOAD	        (WM_USER + 1)
+#define WM_USER_STOPDOWNLOAD	        (WM_USER + 2)
+#define WM_USER_DOWNLOADPROG	        (WM_USER + 3)
+#define WM_USER_DOWNLOADFINISH	        (WM_USER + 4)
+#define WM_USER_DOWNLOADDATACOMING      (WM_USER + 5)
 
 #define WM_USER_DOWNLOADERR_MINVALID		(WM_USER + 1000)
 #define WM_USER_DOWNLOAD_OPENERR			(WM_USER_DOWNLOADERR_MINVALID + 1)
@@ -32,11 +34,16 @@ public:
 #endif
 
 protected:
+    MapPacket m_MapPacket;
+    HANDLE m_HEvent;
+
+protected:
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV 支持
 	afx_msg LRESULT OnStartDownload(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnStopDownload(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnDownloadProg(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnDownloadFinish(WPARAM wParam, LPARAM lParam);
+    afx_msg LRESULT OnDownloadDataComing(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnDownloadErr(WPARAM wParam, LPARAM lParam);
 	DECLARE_MESSAGE_MAP()
 public:

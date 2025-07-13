@@ -22,7 +22,9 @@ CDlProgDlg::CDlProgDlg(CWnd* pParent /*=nullptr*/) :
 	m_StopDownloading(true),
 	m_EntryDownloadFileThreadID(0),
 	m_EntryDownloadFileThread(NULL)
-{}
+{
+    m_HEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+}
 
 CDlProgDlg::~CDlProgDlg()
 {
@@ -31,6 +33,10 @@ CDlProgDlg::~CDlProgDlg()
 		CloseHandle(m_EntryDownloadFileThread);
 		m_EntryDownloadFileThread = NULL;
 	}
+    if (m_HEvent) {
+        CloseHandle(m_HEvent);
+        m_HEvent = NULL;
+    }
 }
 
 void CDlProgDlg::DoDataExchange(CDataExchange* pDX)
@@ -45,6 +51,7 @@ BEGIN_MESSAGE_MAP(CDlProgDlg, CDialog)
 	ON_MESSAGE(WM_USER_STOPDOWNLOAD, &CDlProgDlg::OnStopDownload)
 	ON_MESSAGE(WM_USER_DOWNLOADPROG, &CDlProgDlg::OnDownloadProg)
 	ON_MESSAGE(WM_USER_DOWNLOADFINISH, &CDlProgDlg::OnDownloadFinish)
+    ON_MESSAGE(WM_USER_DOWNLOADDATACOMING, &CDlProgDlg::OnDownloadDataComing)
 	ON_MESSAGE(WM_USER_DOWNLOAD_ERR, &CDlProgDlg::OnDownloadErr)
 END_MESSAGE_MAP()
 
@@ -132,10 +139,17 @@ afx_msg LRESULT CDlProgDlg::OnDownloadErr(WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 
+afx_msg LRESULT CDlProgDlg::OnDownloadDataComing(WPARAM wParam, LPARAM lParam)
+{
+    SetEvent(m_HEvent);
+    return 0;
+}
+
 bool CDlProgDlg::StopDownloadFileThread()
 {
 	if (m_isDownloading) {
-		m_StopDownloading = true;
+        m_StopDownloading = true;
+        SetEvent(m_HEvent);
 		DWORD ret = WaitForSingleObject(m_EntryDownloadFileThread, 3000);
 		if (ret == WAIT_TIMEOUT) {
 			TRACE("%s : %s\n", __FUNCTION__, _T("Thread no exit!!"));
@@ -169,37 +183,40 @@ void CDlProgDlg::DownloadFile()
 		return;
 	}
 	Scoped<decltype(pf), decltype(&fclose)> scopPF(pf, fclose);
-	Packet inPacket, outPacket;
-	DWORD handleID = ::GetCurrentThreadId();
-	HANDLE hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-	Scoped<HANDLE, decltype(&CloseHandle)> scoped(hEvent, &CloseHandle);
-	Packet* pOutPacket = &outPacket; Packet** ppOutPacket = &pOutPacket;
+
+    HANDLE handleID = this->GetSafeHwnd();
+    MapPacket::ResourcePacket rp;
+    if (!m_MapPacket.AppResourcePacket(WM_USER_DOWNLOADDATACOMING, rp)) {
+        PostMessage(WM_USER_DOWNLOAD_ERR, 0, 0);
+        return;
+    }
+
 	ReqFileBody rfBody;
 	rfBody.fileID = m_fileID;
 	rfBody.ctrlCode = ReqFileBody::RFB_CC_NEXT;
-	ReqFileBody::Serialize(rfBody, inPacket.body);
-	CPacketHandler::BuildPacketHeaderInPacket(inPacket, StatusCode::SC_NONE, ChecksumType::CT_SUM,
-				handleID, ReqRes::RR_REQUEST | CommandType::CMD_DOWNLOAD_FILE);
+	ReqFileBody::Serialize(rfBody, rp.inPacket->body);
+	CPacketHandler::BuildPacketHeaderInPacket(*(rp.inPacket), ChecksumType::CT_SUM,
+		ReqRes::RR_REQUEST | CommandType::CMD_DOWNLOAD_FILE, StatusCode::SC_NONE);
 	FileBody fBody;
+    CClientController::ReqInfo reqInfo(rp.inPacket, rp.outPacket, true, handleID, WM_USER_DOWNLOADDATACOMING);
+    ResetEvent(m_HEvent);
 	while (!m_StopDownloading) {
-		if (CClientController::GetInstance()->RegisterResponse(handleID, ppOutPacket, hEvent) < 0) {
+		if (CClientController::GetInstance()->SendRequest(reqInfo) < 0) {
 			PostMessage(WM_USER_DOWNLOAD_ERR, 0, 0);
 			break;
 		}
 
-		if (CClientController::GetInstance()->SendRequest(&inPacket) < 0) {
-			PostMessage(WM_USER_DOWNLOAD_ERR, 0, 0);
-			break;
-		}
-
-		WaitForSingleObject(hEvent, INFINITE);
-		ResetEvent(hEvent);
+		WaitForSingleObject(m_HEvent, INFINITE);
+		ResetEvent(m_HEvent);
+        if (m_StopDownloading) {
+            break;
+        }
 
 		if (
-			((*ppOutPacket) == nullptr) ||
-			(!CPacketHandler::ValidatePacket(outPacket, ReqRes::RR_RESPONSE | CommandType::CMD_DOWNLOAD_FILE)) ||
-			(!FileBody::Deserialize(outPacket.body, fBody))
-			)
+			((rp.outPacket->Empty()) ||
+			(!CPacketHandler::ValidatePacket(*(rp.outPacket), ReqRes::RR_RESPONSE | CommandType::CMD_DOWNLOAD_FILE)) ||
+			(!FileBody::Deserialize(rp.outPacket->body, fBody)))
+		   )
 		{
 			PostMessage(WM_USER_DOWNLOAD_ERR, 0, 0);
 			break;
@@ -217,9 +234,9 @@ void CDlProgDlg::DownloadFile()
 		}
 
 		fBody.Clear();
-		outPacket.Clear();
+		rp.outPacket->Clear();
 		PostMessage(WM_USER_DOWNLOADPROG, 0, 0);
 	}
-
+    m_MapPacket.PutResourcePacket(WM_USER_DOWNLOADDATACOMING);
 	m_isDownloading = false;
 }

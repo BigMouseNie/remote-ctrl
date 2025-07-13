@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <queue>
 #include <mutex>
@@ -21,7 +21,8 @@ public:
 	BlockingQueue& operator=(BlockingQueue&&) = delete;
 
 	bool pop(T& outElem);
-	void push(T& elem);
+    void push(T&& elem);
+    void push(const T& elem);
 	void Blocking();
 	void Release();
 	void Clear();
@@ -43,17 +44,25 @@ bool BlockingQueue<T>::pop(T& outElem)
 	if (popQue.empty() && SwapQueue() == 0) {
 		return false;
 	}
-	outElem = popQue.front();
+	outElem = std::move(popQue.front());
 	popQue.pop();
 	return true;
 }
 
 template <typename T>
-void BlockingQueue<T>::push(T& elem)
+void BlockingQueue<T>::push(T&& elem)
 {
-	std::lock_guard<std::mutex> pushLock(pushMtx);
-	pushQue.push(elem);
-	noEmpty.notify_one();
+    std::lock_guard<std::mutex> pushLock(pushMtx);
+    pushQue.push(std::move(elem));
+    noEmpty.notify_one();
+}
+
+template <typename T>
+void BlockingQueue<T>::push(const T& elem)
+{
+    std::lock_guard<std::mutex> pushLock(pushMtx);
+    pushQue.push(elem);
+    noEmpty.notify_one();
 }
 
 template <typename T>
@@ -84,16 +93,17 @@ void BlockingQueue<T>::Release()
 template <typename T>
 void BlockingQueue<T>::Clear()
 {
-	{
-		std::queue<T> empty;
-		std::lock_guard<std::mutex> popLock(popMtx);
-		std::swap(popQue, empty);
-	}
-
-	{
-		std::queue<T> empty;
-		std::lock_guard<std::mutex> pushLock(pushMtx);
-		std::swap(pushQue, empty);
-	}
+    Release();
+    std::lock_guard<std::mutex> popLock(popMtx);
+    std::lock_guard<std::mutex> pushLock(pushMtx);
+    {
+        std::queue<T> empty;
+        std::swap(popQue, empty);
+    }
+    {
+        std::queue<T> empty;
+        std::swap(pushQue, empty);
+    }
+    Blocking();
 }
 

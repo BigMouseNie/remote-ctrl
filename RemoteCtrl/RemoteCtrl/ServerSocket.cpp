@@ -140,7 +140,7 @@ void CServerSocket::CloseClient()
 
 int CServerSocket::SendPacket(const PacketHeader& header, const char* body)
 {
-	return m_hpacket.SendPacket(&header, body);
+	return m_hpacket.SendPacket(header, body);
 }
 
 int CServerSocket::SendPacket(const Packet& packet)

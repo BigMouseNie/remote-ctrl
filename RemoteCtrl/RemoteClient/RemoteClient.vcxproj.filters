@@ -60,6 +60,15 @@
     <ClInclude Include="..\Common\BlockingQueue.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="..\Common\TimerScheduler.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Common\ThreadPool.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="MapPacket.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="RemoteClient.cpp">
@@ -87,6 +96,15 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="ClientController.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Common\TimerScheduler.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Common\ThreadPool.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="MapPacket.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

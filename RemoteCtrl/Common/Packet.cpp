@@ -1,15 +1,5 @@
-#include "pch.h"
+ï»¿#include "pch.h"
 #include "Packet.h"
-
-const size_t PacketHeader::packetHeaderCompactSize =
-		sizeof(uint16_t) + // magic
-		sizeof(uint16_t) + // version
-		sizeof(uint16_t) + // checksumType
-		sizeof(uint32_t) + // checksum
-		sizeof(uint32_t) + // statusCode
-		sizeof(uint32_t) + // handleID
-		sizeof(MessageType) + // messageType
-		sizeof(uint32_t);  // bodyLength
 
 Buffer::Buffer()
 	: data(nullptr), readptr(nullptr), writeptr(nullptr), readable(0), writable(0), size(0)
@@ -110,7 +100,7 @@ bool Buffer::TryReadExact(Buffer& destBuf, size_t lenToRead)
 }
 
 /**
- * @return : ·µ»Ø½ÓÊÕµÄ×Ö½ÚÊı(²»»á·µ»Ø0)£¬·µ»Ø-1ĞèÒª¹Ø±ÕÁ¬½Ó
+ * @return : è¿”å›æ¥æ”¶çš„å­—èŠ‚æ•°(ä¸ä¼šè¿”å›0)ï¼Œè¿”å›-1éœ€è¦å…³é—­è¿æ¥
  */
 int Buffer::Recv(SOCKET sock)
 {
@@ -124,7 +114,7 @@ int Buffer::Recv(SOCKET sock)
 }
 
 /**
- * @return : ·µ»Ø·¢ËÍµÄ×Ö½ÚÊı(²»»á·µ»Ø0)£¬·µ»Ø-1ĞèÒª¹Ø±ÕÁ¬½Ó
+ * @return : è¿”å›å‘é€çš„å­—èŠ‚æ•°(ä¸ä¼šè¿”å›0)ï¼Œè¿”å›-1éœ€è¦å…³é—­è¿æ¥
  */
 int Buffer::Send(SOCKET sock)
 {
@@ -214,38 +204,9 @@ void Buffer::EnsureWritableSize(size_t n)
 
 bool PacketHeader::Serialize(const PacketHeader& inHeader, Buffer& outStream)
 {
-	if (!outStream.Write(reinterpret_cast<const char*>(&(inHeader.magic)), sizeof(inHeader.magic))) {
+	if (!outStream.Write(reinterpret_cast<const char*>(&(inHeader)), sizeof(inHeader))) {
 		outStream.Clear(); return false;
 	}
-
-	if (!outStream.Write(reinterpret_cast<const char*>(&(inHeader.version)), sizeof(inHeader.version))) {
-		outStream.Clear(); return false;
-	}
-
-	if (!outStream.Write(reinterpret_cast<const char*>(&(inHeader.checksumType)), sizeof(inHeader.checksumType))) {
-		outStream.Clear(); return false;
-	}
-
-	if (!outStream.Write(reinterpret_cast<const char*>(&(inHeader.checksum)), sizeof(inHeader.checksum))) {
-		outStream.Clear(); return false;
-	}
-
-	if (!outStream.Write(reinterpret_cast<const char*>(&(inHeader.statusCode)), sizeof(inHeader.statusCode))) {
-		outStream.Clear(); return false;
-	}
-
-	if (!outStream.Write(reinterpret_cast<const char*>(&(inHeader.handleID)), sizeof(inHeader.handleID))) {
-		outStream.Clear(); return false;
-	}
-
-	if (!outStream.Write(reinterpret_cast<const char*>(&(inHeader.messageType)), sizeof(inHeader.messageType))) {
-		outStream.Clear(); return false;
-	}
-
-	if (!outStream.Write(reinterpret_cast<const char*>(&(inHeader.bodyLength)), sizeof(inHeader.bodyLength))) {
-		outStream.Clear(); return false;
-	}
-
 	return true;
 }
 
@@ -254,22 +215,11 @@ bool PacketHeader::Deserialize(const Buffer& inStream, PacketHeader& outHeader)
 	const char* inReadPtr = inStream.GetReadPtr();
 	size_t readable = inStream.Readable();
 
-	if (readable < packetHeaderCompactSize) {
+	if (readable < sizeof(outHeader)) {
 		return false;
 	}
 
-	const uint16_t* u16Arr = reinterpret_cast<const uint16_t*>(inReadPtr);
-	outHeader.magic = u16Arr[0];
-	outHeader.version = u16Arr[1];
-	outHeader.checksumType = u16Arr[2];
-
-	const uint32_t* u32Arr = reinterpret_cast<const uint32_t*>(inReadPtr + (sizeof(uint16_t) * 3));
-	outHeader.checksum = u32Arr[0];
-	outHeader.statusCode = u32Arr[1];
-	outHeader.handleID = u32Arr[2];
-	outHeader.messageType = u32Arr[3];
-	outHeader.bodyLength = u32Arr[4];
-
+    memcpy(reinterpret_cast<char*>(&outHeader), inReadPtr, sizeof(outHeader));
 	return true;
 }
 
@@ -283,7 +233,7 @@ CPacketHandler::CPacketHandler(SOCKET sock)
 
 CPacketHandler::~CPacketHandler()
 {
-	sock = INVALID_SOCKET;	// ĞèÒªÉÏ²ãÓ¦ÓÃ¹Ø±Õ
+	sock = INVALID_SOCKET;	// éœ€è¦ä¸Šå±‚åº”ç”¨å…³é—­
 }
 
 void CPacketHandler::SetSocket(SOCKET sock, bool isResetBuf)
@@ -311,7 +261,7 @@ int CPacketHandler::GetPacket(Packet& packet)
 
 int CPacketHandler::ParseBuffer(Packet& packet)
 {
-	if (state == RecvState::WAIT_HEADER && recvbuf.TryReadExact(forRecvPHBuf, PacketHeader::packetHeaderCompactSize)) {
+	if (state == RecvState::WAIT_HEADER && recvbuf.TryReadExact(forRecvPHBuf, sizeof(PacketHeader))) {
 		bool res = PacketHeader::Deserialize(forRecvPHBuf, curRecvPH);
 		forRecvPHBuf.Clear();
 		if (!res || curRecvPH.magic != PACKETHEADERMAGIC) {
@@ -330,25 +280,25 @@ int CPacketHandler::ParseBuffer(Packet& packet)
 	return 0;
 }
 
-int CPacketHandler::SendPacket(const PacketHeader* sHeader, const char* body)
+int CPacketHandler::SendPacket(const PacketHeader& header, const char* body)
 {
 	sendbuf.Clear();
-	PacketHeader::Serialize(*sHeader, sendbuf);
-	sendbuf.Write(body, sHeader->bodyLength);
+	PacketHeader::Serialize(header, sendbuf);
+	sendbuf.Write(body, header.bodyLength);
 	return sendbuf.Send(sock);
 }
 
-int CPacketHandler::SendPacket(const PacketHeader* sHeader, const Buffer& body)
+int CPacketHandler::SendPacket(const PacketHeader& header, const Buffer& body)
 {
 	sendbuf.Clear();
-	PacketHeader::Serialize(*sHeader, sendbuf);
-	sendbuf.Write(body, sHeader->bodyLength);
+	PacketHeader::Serialize(header, sendbuf);
+	sendbuf.Write(body, header.bodyLength);
 	return sendbuf.Send(sock);
 }
 
 int CPacketHandler::SendPacket(const Packet& packet)
 {
-	return SendPacket(&(packet.header), packet.body);
+	return SendPacket(packet.header, packet.body);
 }
 
 int CPacketHandler::SafeSendPacket(const Packet& packet)
@@ -374,9 +324,9 @@ bool CPacketHandler::ValidatePacket(const Packet& packet, MessageType msgType, b
 		return false;
 	}
 
-	// TODO: Ğ£ÑéºÍ
+	// TODO: æ ¡éªŒå’Œ
 	const char* pdata = packet.body.GetReadPtr();
-	if (ph.checksum != CalculateChecksum(static_cast<ChecksumType>(ph.checksumType),
+	if (ph.checksumVal != CalculateChecksum((ph.checksumType),
 		reinterpret_cast<const uint8_t*>(pdata), ph.bodyLength))
 	{
 		return false;
@@ -385,48 +335,25 @@ bool CPacketHandler::ValidatePacket(const Packet& packet, MessageType msgType, b
 	return true;
 }
 
-void CPacketHandler::BuildPacketHeader(Packet& packet, StatusCode scCode,
-	ChecksumType csType, MessageType msgType)
-{
-	PacketHeader& ph = packet.header;
-	ph.magic = PACKETHEADERMAGIC;
-	ph.version = PACKETVERSION;
-	ph.statusCode = scCode;
-	ph.checksumType = csType;
-	ph.checksum = CalculateChecksum(csType, reinterpret_cast<const uint8_t*>(packet.body.GetReadPtr()),
-		packet.body.Readable());
-	ph.messageType = msgType;
-	ph.bodyLength = packet.body.Readable();
-}
-
-void CPacketHandler::BuildPacket(Packet& packet, const char* body, size_t bodySize,
-	StatusCode scCode, ChecksumType csType, MessageType msgType)
-{
-	packet.body.Clear();
-	packet.body.Write(body, bodySize);
-	BuildPacketHeader(packet, scCode, csType, msgType);
-}
-
-void CPacketHandler::BuildPacketHeaderInPacket(Packet& outPacket, StatusCode scCode,
-	ChecksumType csType, uint32_t handleID, MessageType msgType)
+void CPacketHandler::BuildPacketHeaderInPacket(Packet& outPacket,
+	ChecksumType csType, MessageType msgType, StatusCode scCode)
 {
 	PacketHeader& ph = outPacket.header;
 	ph.magic = PACKETHEADERMAGIC;
 	ph.version = PACKETVERSION;
-	ph.statusCode = scCode;
 	ph.checksumType = csType;
-	ph.checksum = CalculateChecksum(csType, reinterpret_cast<const uint8_t*>(outPacket.body.GetReadPtr()),
+	ph.checksumVal = CalculateChecksum(csType, reinterpret_cast<const uint8_t*>(outPacket.body.GetReadPtr()),
 		outPacket.body.Readable());
-	ph.handleID = handleID;
 	ph.messageType = msgType;
+    ph.statusCode = scCode;
 	ph.bodyLength = outPacket.body.Readable();
 }
 
 void CPacketHandler::BuildPacket(Packet& outPacket, const char* body, size_t bodyLen,
-	StatusCode scCode, ChecksumType csType, uint32_t handleID, MessageType msgType)
+    ChecksumType csType, MessageType msgType, StatusCode scCode)
 {
 	outPacket.body.Write(body, bodyLen);
-	BuildPacketHeaderInPacket(outPacket, scCode, csType, handleID, msgType);
+	BuildPacketHeaderInPacket(outPacket, csType, msgType, scCode);
 }
 
 uint32_t CPacketHandler::CalculateChecksum(ChecksumType type, const uint8_t* data, size_t len)

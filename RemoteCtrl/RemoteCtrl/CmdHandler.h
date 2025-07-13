@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 
 #include "Packet.h"
 #include "Body.h"
@@ -23,7 +23,7 @@ public:
 	static ChecksumType GetChecksumType();
 
 	/**
-	 * @return : -1ĞèÒª×ö¶Ï¿ª´¦Àí
+	 * @return : -1éœ€è¦åšæ–­å¼€å¤„ç†
 	 */
 	static int DealPacket(const Packet& inPacket, Packet** ppOutPacket);
 
@@ -40,7 +40,7 @@ private:
 	static int UNLOCK_MACHINE_handler(const Packet& inPacket, Packet** ppOutPacket);
 
 private:
-	// ÏÂÔØÎÄ¼şÏà¹Ø
+	// ä¸‹è½½æ–‡ä»¶ç›¸å…³
 	static void DOWNLOAD_FILE_BEGIN_handler(const ReqFileBody& rfBody, Buffer& outBody, StatusCode& scode);
 	static void DOWNLOAD_FILE_STOP_handler(const ReqFileBody& rfBody, Buffer& outBody, StatusCode& scode);
 	static void DOWNLOAD_FILE_NEXT_handler(const ReqFileBody& rfBody, Buffer& outBody, StatusCode& scode);
@@ -60,7 +60,7 @@ private:
 	static bool IsLockedMachine;
 	static CLockDialog lockDlg;
 	static unsigned int lockDlgTID;
-	static const std::unordered_map<uint32_t, DealPacketCallBack> IdxCmdHandler;
+	static const std::unordered_map<CommandType, DealPacketCallBack> IdxCmdHandler;
 	static std::atomic<bool> isRelese;
 
 private:
@@ -107,8 +107,8 @@ private:
 	uint64_t lastOffset = 0;
 	uint64_t offset = 0;
 	uint64_t totalSize = 0;
-	time_t lastActiveTime = 0;    // ×îºó»î¶¯Ê±¼ä£¨³¬Ê±ÇåÀíÓÃ£©
-	bool isFinished = false;       // ÊÇ·ñÏÂÔØÍê³É
+	time_t lastActiveTime = 0;    // æœ€åæ´»åŠ¨æ—¶é—´ï¼ˆè¶…æ—¶æ¸…ç†ç”¨ï¼‰
+	bool isFinished = false;       // æ˜¯å¦ä¸‹è½½å®Œæˆ
 	static const uint32_t minChunkSize;
 	static uint32_t nextFileID;
 };

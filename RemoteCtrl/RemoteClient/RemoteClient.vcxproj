@@ -190,11 +190,14 @@
     <ClInclude Include="..\Common\Packet.h" />
     <ClInclude Include="..\Common\Scoped.h" />
     <ClInclude Include="..\Common\Singleton.h" />
+    <ClInclude Include="..\Common\ThreadPool.h" />
+    <ClInclude Include="..\Common\TimerScheduler.h" />
     <ClInclude Include="ClientController.h" />
     <ClInclude Include="ClientSocket.h" />
     <ClInclude Include="CMonitorWin.h" />
     <ClInclude Include="DlProgDlg.h" />
     <ClInclude Include="framework.h" />
+    <ClInclude Include="MapPacket.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="RemoteClient.h" />
     <ClInclude Include="RemoteClientDlg.h" />
@@ -204,10 +207,13 @@
   <ItemGroup>
     <ClCompile Include="..\Common\Body.cpp" />
     <ClCompile Include="..\Common\Packet.cpp" />
+    <ClCompile Include="..\Common\ThreadPool.cpp" />
+    <ClCompile Include="..\Common\TimerScheduler.cpp" />
     <ClCompile Include="ClientController.cpp" />
     <ClCompile Include="ClientSocket.cpp" />
     <ClCompile Include="CMonitorWin.cpp" />
     <ClCompile Include="DlProgDlg.cpp" />
+    <ClCompile Include="MapPacket.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>

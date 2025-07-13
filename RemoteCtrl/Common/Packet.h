@@ -1,15 +1,16 @@
 ﻿#pragma once
 
 #define PACKETHEADERMAGIC	0xFEFF
-#define PACKETVERSION		0x0001	// version : 0.0.0.1
+#define PACKETVERSION		0x01	// version : 1
 #define EXPANSIONFACTOR		2
 #define RECVMINBUFSIZE		2048
-#define EXTRACTIONCMD		0x0FFFFFFF
+#define EXTRACTIONCMD		0x00FFFFFF
 
 #include <mutex>
 #include <winsock2.h>
 #pragma comment(lib, "ws2_32.lib")
 
+using PacketVersion = uint8_t;
 using MessageType = uint32_t;
 // MessageType = ReqRes | CommandType
 enum ReqRes : MessageType
@@ -33,7 +34,8 @@ enum CommandType : MessageType
 	CMD_INVALID_VALUE,
 };
 
-enum ChecksumType : uint16_t
+using ChecksumVal = uint32_t;
+enum ChecksumType : uint8_t
 {
 	CT_NONE,
 	CT_SUM,
@@ -42,15 +44,15 @@ enum ChecksumType : uint16_t
 	CT_INVALID_VALUE,
 };
 
-enum StatusCode : uint32_t
+enum StatusCode : uint16_t
 {
-	SC_NONE			= 0x00000000,
-	SC_OK			= 0x00001000,
-	SC_OK_WAIT 		= 0x00001001,
-	SC_ERR			= 0x10000000,
-	SC_ERR_INTERNAL = 0x10010000,
-	SC_ERR_PACKET	= 0x10020000,
-	SC_ERR_NOTFOUND = 0x10030000,
+	SC_NONE			= 0x0000,
+	SC_OK			= 0x0080,
+	SC_OK_WAIT 		= 0x0081,
+	SC_ERR			= 0x8000,
+	SC_ERR_INTERNAL = 0x8100,
+	SC_ERR_PACKET	= 0x8200,
+	SC_ERR_NOTFOUND = 0x8300,
 };
 
 class RawBuffer;
@@ -124,37 +126,43 @@ private:
 	Buffer& rawBuf;
 };
 
+using BodyLength = uint32_t;
+using HandleID = uint32_t;
+#pragma pack(push, 1)
 struct PacketHeader
 {
-	uint16_t magic;					// 固定魔数 0xFEFF，用于包起始验证
-	uint16_t version;				// 协议版本号
-	uint16_t checksumType;			// 校验方式
-	uint32_t checksum;				// 校验值
-	uint32_t statusCode;			// 状态
-	uint32_t handleID;
-	MessageType messageType;		// 消息类型
-	uint32_t bodyLength;			// 包体长度
+	uint16_t        magic;					// 固定魔数 0xFEFF，用于包起始验证
+    PacketVersion   version;				// 协议版本号
+    ChecksumType    checksumType;			// 校验方式
+    ChecksumVal     checksumVal;			// 校验值
+
+	MessageType     messageType;		    // 消息类型
+    BodyLength      bodyLength;			    // 包体长度
+
+    HandleID        handleID;               // 客户端相关应用程序信息
+    StatusCode      statusCode;			    // 状态码
 
 	PacketHeader()
-		: magic(0), version(0), checksumType(0), checksum(0),
-		statusCode(0), handleID(0), messageType(0), bodyLength(0)
+		: magic(0), version(0), checksumType(ChecksumType::CT_NONE), checksumVal(0),
+		  messageType(0), statusCode(StatusCode::SC_NONE),bodyLength(0), handleID(0)
 	{}
 	~PacketHeader() = default;
 
 	void Clear() {
-		magic = 0;
-		version = 0;
-		checksumType = 0;
-		checksum = 0;
-		statusCode = 0;
-		handleID = 0;
-		messageType = 0;
-		bodyLength = 0;
+        memset(this, 0, sizeof(PacketHeader));
 	}
+
+    PacketHeader& operator=(const PacketHeader& other) {
+        if (this != &other) {
+            memcpy(reinterpret_cast<char*>(this), reinterpret_cast<const char*>(&other), sizeof(PacketHeader));
+        }
+        return *this;
+    }
+
 	static bool Serialize(const PacketHeader& inHeader, Buffer& outStream);
 	static bool Deserialize(const Buffer& inStream, PacketHeader& outHeader);
-	static const size_t packetHeaderCompactSize;
 };
+#pragma pack(pop)
 
 struct Packet
 {
@@ -165,15 +173,21 @@ struct Packet
 		header.Clear();
 	}
 
+    bool Empty() {
+        return body.Readable() == 0 && header.handleID == 0;
+    }
+
 	Packet& operator=(const Packet& other) {
-		body.Clear();
-		other.body.TryPeekExact(body, other.body.Readable());
-		header = other.header;
+        if (this != &other) {
+            body.Clear();
+            other.body.TryPeekExact(body, other.body.Readable());
+            header = other.header;
+        }
 		return *this;
 	}
 };
 
-enum class RecvState : size_t
+enum RecvState
 {
 	WAIT_HEADER,					// 等待读包头	
 	WAIT_BODY,						// 等待读包体
@@ -187,23 +201,19 @@ public:
 	~CPacketHandler();
 
 	int GetPacket(Packet& packet);	// block
-	int SendPacket(const PacketHeader* sHeader, const char* body);
-	int SendPacket(const PacketHeader* sHeader, const Buffer& body);
+	int SendPacket(const PacketHeader& sHeader, const char* body);
+	int SendPacket(const PacketHeader& sHeader, const Buffer& body);
 	int SendPacket(const Packet& packet);
 	int SafeSendPacket(const Packet& packet);
 
 	void SetSocket(SOCKET sock, bool isResetBuf = true);
 
 	static bool ValidatePacket(const Packet& packet, MessageType msgType, bool isValidateMsgType = true);
-	static void BuildPacketHeader(Packet& packet, StatusCode scCode,
-								  ChecksumType csType, MessageType msgType);
-	static void BuildPacket(Packet& packet, const char* body, size_t bodySize,
-							StatusCode scCode, ChecksumType csType, MessageType msgType);
 
-	static void BuildPacketHeaderInPacket(Packet& outPacket, StatusCode scCode,
-		ChecksumType csType, uint32_t handleID, MessageType msgType);
+    static void BuildPacketHeaderInPacket(Packet& outPacket,
+        ChecksumType csType, MessageType msgType, StatusCode scCode);
 	static void BuildPacket(Packet& outPacket, const char* body, size_t bodyLen,
-		StatusCode scCode, ChecksumType csType, uint32_t handleID, MessageType msgType);
+        ChecksumType csType, MessageType msgType, StatusCode scCode);
 
 private:
 	int ParseBuffer(Packet& packet);

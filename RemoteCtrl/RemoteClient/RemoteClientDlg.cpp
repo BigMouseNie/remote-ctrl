@@ -78,7 +78,6 @@ BEGIN_MESSAGE_MAP(CRemoteClientDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUT_CONN_TEST, &CRemoteClientDlg::OnBnClickedButConnTest)
 	ON_BN_CLICKED(IDC_BUT_FILE_LIST, &CRemoteClientDlg::OnBnClickedButFileList)
 	ON_NOTIFY(NM_DBLCLK, IDC_TREE_DIR, &CRemoteClientDlg::OnNMDblclkTreeDir)
-	ON_NOTIFY(NM_CLICK, IDC_TREE_DIR, &CRemoteClientDlg::OnNMClickTreeDir)
 	ON_NOTIFY(NM_RCLICK, IDC_LIST_FILE, &CRemoteClientDlg::OnNMRClickListFile)
 	ON_COMMAND(ID_FILE_MENU_DOWNLOAD, &CRemoteClientDlg::OnFileMenuDownload)
 	ON_COMMAND(ID_FILE_MENU_DEL, &CRemoteClientDlg::OnFileMenuDel)
@@ -86,6 +85,12 @@ BEGIN_MESSAGE_MAP(CRemoteClientDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BUT_REMOTE_MONITOR, &CRemoteClientDlg::OnBnClickedButRemoteMonitor)
 	ON_NOTIFY(IPN_FIELDCHANGED, IDC_IPADDRESS_SERV, &CRemoteClientDlg::OnIpnFieldchangedIpaddressServ)
 	ON_EN_CHANGE(IDC_EDIT_PORT, &CRemoteClientDlg::OnEnChangeEditPort)
+    ON_MESSAGE(WM_USER_CONNECTSERVERANDTEST, &CRemoteClientDlg::OnConnectServer)
+    ON_MESSAGE(WM_USER_DISKPARTINFO, &CRemoteClientDlg::OnDiskPartInfo)
+    ON_MESSAGE(WM_USER_FILELIST, &CRemoteClientDlg::OnFileList)
+    ON_MESSAGE(WM_USER_DOWNLOADFILE, &CRemoteClientDlg::OnDownloadFile)
+    ON_MESSAGE(WM_USER_OPENFILE, &CRemoteClientDlg::OnOpenFile)
+    ON_MESSAGE(WM_USER_DELFILE, &CRemoteClientDlg::OnDelFile)
 END_MESSAGE_MAP()
 
 
@@ -231,57 +236,48 @@ void CRemoteClientDlg::OnBnClickedButConnTest()
 	CClientController::GetInstance()->ConnectServer();
 	Sleep(100);
 
-	Packet inPacket, outPacket;
+    HANDLE handleID = this->GetSafeHwnd();
+    MapPacket::ResourcePacket rp;
+    if (!m_MapPacket.AppResourcePacket(WM_USER_CONNECTSERVERANDTEST, rp)) {
+        MessageBox(_T("未知错误！"), _T("连接测试"), MB_OK | MB_ICONERROR);
+        return;
+    }
 
-	int count = 0;
-	DWORD handleID = ::GetCurrentThreadId();
-	HANDLE hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-	Scoped<HANDLE, decltype(&CloseHandle)> scoped(hEvent, &CloseHandle);
-	Packet* pOutPacket = &outPacket; Packet** ppOutPacket = &pOutPacket;
-	while (CClientController::GetInstance()->RegisterResponse(handleID, ppOutPacket, hEvent) < 0) {
-		if (count++ < 3) { Sleep(100); continue; }
-		TRACE("%s : %s\n", __FUNCTION__, _T("Register Response falid(retry 3 times)!"));
-		MessageBox(_T("连接失败！"), _T("连接测试"), MB_OK | MB_ICONERROR);
-		return;
-	}
-
-	count = 0;
 	char testStr[] = "echo test!";
-	CPacketHandler::BuildPacket(inPacket, testStr, strlen(testStr) + 1, StatusCode::SC_NONE, ChecksumType::CT_SUM,
-		handleID, ReqRes::RR_REQUEST | CommandType::CMD_TEST);
-	Packet* pInPacket = &inPacket;
-	while (CClientController::GetInstance()->SendRequest(pInPacket) < 0) {
+    CPacketHandler::BuildPacket(*(rp.inPacket), testStr, strlen(testStr) + 1, ChecksumType::CT_SUM,
+        ReqRes::RR_REQUEST | CommandType::CMD_TEST, StatusCode::SC_NONE);
+
+    CClientController::ReqInfo reqInfo(rp.inPacket, rp.outPacket, true, handleID, WM_USER_CONNECTSERVERANDTEST);
+    int count = 0;
+	while (CClientController::GetInstance()->SendRequest(reqInfo) < 0) {
 		if (count++ < 3) { Sleep(100); continue; }
 		TRACE("%s : %s\n", __FUNCTION__, _T("Send Request falid(retry 3 times)!"));
 		MessageBox(_T("连接失败！"), _T("连接测试"), MB_OK | MB_ICONERROR);
-		return;
+        TRACE("%s : %s\n", __FUNCTION__, _T("SendRequest Err!"));
+        m_MapPacket.PutResourcePacket(WM_USER_CONNECTSERVERANDTEST);
+        return;
 	}
+}
 
-	WaitForSingleObject(hEvent, INFINITE);
-	if (*ppOutPacket) {
-		if (!CPacketHandler::ValidatePacket(outPacket, ReqRes::RR_RESPONSE | CommandType::CMD_TEST)) {
-			MessageBox(_T("连接成功，发送测试数据包成功，读取测试数据包成功，包验证失败！"),
-				_T("连接测试"), MB_OK | MB_ICONERROR);
-			return;
-		}
+afx_msg LRESULT CRemoteClientDlg::OnConnectServer(WPARAM wParam, LPARAM lParam)
+{
+    MapPacket::ResourcePacket rp;
+    if (!m_MapPacket.GetResourcePacket(WM_USER_CONNECTSERVERANDTEST, rp)) {
+        MessageBox(_T("未知错误！"), _T("连接测试"), MB_OK | MB_ICONERROR);
+        return 0;
+    }
 
-		char recvData[sizeof(testStr)];
-		if (outPacket.body.TryReadExact(recvData, outPacket.header.bodyLength)) {
-			TRACE("%s : %s : %s\n", __FUNCTION__, _T("Received data"), recvData);
-			if (sizeof(testStr) == outPacket.header.bodyLength && strcmp(testStr, recvData) == 0) {
-				MessageBox(_T("连接成功，发送测试数据包成功，读取测试数据包成功，包验证成功，数据比对成功！"),
-					_T("连接测试"), MB_OK | MB_ICONINFORMATION);
-				return;
-			}
-		}
+    if (rp.outPacket->Empty()) {
+        TRACE("%s : %s\n", __FUNCTION__, _T("Empty Err!"));
+        MessageBox(_T("连接失败！"), _T("连接测试"), MB_OK | MB_ICONERROR);
+    }
+    else {
+        TRACE("%s : %s\n", __FUNCTION__, rp.outPacket->body.GetReadPtr());
+        MessageBox(_T("连接成功！"), _T("连接测试"), MB_OK | MB_ICONINFORMATION);
+    }
 
-		MessageBox(_T("连接成功，发送测试数据包成功，读取测试数据包成功，包验证成功，数据比对失败！"),
-			_T("连接测试"), MB_OK | MB_ICONERROR);
-		return;
-	}
-
-	MessageBox(_T("连接失败！"), _T("连接测试"), MB_OK | MB_ICONERROR);
-	return;
+    m_MapPacket.PutResourcePacket(WM_USER_CONNECTSERVERANDTEST);
+    return 0;
 }
 
 void CRemoteClientDlg::OnBnClickedButFileList()
@@ -290,49 +286,60 @@ void CRemoteClientDlg::OnBnClickedButFileList()
 	m_tree.DeleteAllItems();
 	m_list.DeleteAllItems();
 
-	Packet inPacket, outPacket;
-	DWORD handleID = ::GetCurrentThreadId();
-	HANDLE hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-	Scoped<HANDLE, decltype(&CloseHandle)> scoped(hEvent, &CloseHandle);
-	Packet* pOutPacket = &outPacket; Packet** ppOutPacket = &pOutPacket;
-	if (CClientController::GetInstance()->RegisterResponse(handleID, ppOutPacket, hEvent) < 0) {
-		MessageBox(_T("获取文件列表失败！"), _T("获取文件列表"), MB_OK | MB_ICONERROR);
-		return;
-	}
+    HANDLE handleID = this->GetSafeHwnd();
+    MapPacket::ResourcePacket rp;
+    if (!m_MapPacket.AppResourcePacket(WM_USER_DISKPARTINFO, rp)) {
+        MessageBox(_T("未知错误！"), _T("磁盘信息"), MB_OK | MB_ICONERROR);
+        return;
+    }
 
-	CPacketHandler::BuildPacketHeaderInPacket(inPacket, StatusCode::SC_NONE, ChecksumType::CT_SUM,
-				handleID, ReqRes::RR_REQUEST | CommandType::CMD_DISK_PART);
-	Packet* pInPacket = &inPacket;
-	if (CClientController::GetInstance()->SendRequest(pInPacket) < 0) {
-		MessageBox(_T("获取文件列表失败！"), _T("获取文件列表"), MB_OK | MB_ICONERROR);
-		return;
-	}
+    CPacketHandler::BuildPacketHeaderInPacket(*(rp.inPacket), ChecksumType::CT_SUM,
+        ReqRes::RR_REQUEST | CommandType::CMD_DISK_PART, StatusCode::SC_NONE);
 
-	WaitForSingleObject(hEvent, INFINITE);
-	if ((*ppOutPacket) == NULL) {
-		MessageBox(_T("获取文件列表失败！"), _T("获取文件列表"), MB_OK | MB_ICONERROR);
-		return;
-	}
-	uint32_t diskPart = 0;
-	if (
-		(!CPacketHandler::ValidatePacket(outPacket, ReqRes::RR_RESPONSE | CommandType::CMD_DISK_PART)) ||
-		((outPacket.header.statusCode & StatusCode::SC_ERR) != 0) ||
-		((!outPacket.body.TryPeekExact(reinterpret_cast<char*>(&diskPart), sizeof(diskPart))))
-		)
-	{
-		MessageBox(_T("获取文件列表失败！"), _T("获取文件列表"), MB_OK | MB_ICONERROR);
-		return;
-	}
-	uint32_t flag = 1;
-	char diskPartStr[] = "_:";
-	for (int i = 0; i < 26; ++i) {
-		if (diskPart & flag) {
-			diskPartStr[0] = 'A' + i;
-			m_tree.InsertItem(diskPartStr);
-		}
-		flag <<= 1;
-	}
-	return;
+    CClientController::ReqInfo reqInfo(rp.inPacket, rp.outPacket, true, handleID, WM_USER_DISKPARTINFO);
+    if (CClientController::GetInstance()->SendRequest(reqInfo) < 0) {
+        MessageBox(_T("获取磁盘信息失败！"), _T("磁盘信息"), MB_OK | MB_ICONERROR);
+        m_MapPacket.PutResourcePacket(WM_USER_DISKPARTINFO);
+        return;
+    }
+}
+
+afx_msg LRESULT CRemoteClientDlg::OnDiskPartInfo(WPARAM wParam, LPARAM lParam)
+{
+    MapPacket::ResourcePacket rp;
+    if (!m_MapPacket.GetResourcePacket(WM_USER_DISKPARTINFO, rp)) {
+        MessageBox(_T("未知错误！"), _T("磁盘信息"), MB_OK | MB_ICONERROR);
+        return 0;
+    }
+
+    if (rp.outPacket->Empty()) {
+        MessageBox(_T("获取磁盘信息失败！"), _T("磁盘信息"), MB_OK | MB_ICONERROR);
+        m_MapPacket.PutResourcePacket(WM_USER_DISKPARTINFO);
+        return 0;
+    }
+
+    uint32_t diskPart = 0;
+    if (
+        (!CPacketHandler::ValidatePacket(*(rp.outPacket), ReqRes::RR_RESPONSE | CommandType::CMD_DISK_PART)) ||
+        ((rp.outPacket->header.statusCode & StatusCode::SC_ERR) != 0) ||
+        ((!rp.outPacket->body.TryPeekExact(reinterpret_cast<char*>(&diskPart), sizeof(diskPart))))
+        )
+    {
+        MessageBox(_T("获取文件列表失败！"), _T("获取文件列表"), MB_OK | MB_ICONERROR);
+        m_MapPacket.PutResourcePacket(WM_USER_DISKPARTINFO);
+        return 0;
+    }
+    uint32_t flag = 1;
+    char diskPartStr[] = "_:";
+    for (int i = 0; i < 26; ++i) {
+        if (diskPart & flag) {
+            diskPartStr[0] = 'A' + i;
+            m_tree.InsertItem(diskPartStr);
+        }
+        flag <<= 1;
+    }
+    m_MapPacket.PutResourcePacket(WM_USER_DISKPARTINFO);
+    return 0;
 }
 
 void CRemoteClientDlg::OnNMDblclkTreeDir(NMHDR* pNMHDR, LRESULT* pResult)
@@ -357,47 +364,53 @@ void CRemoteClientDlg::OnNMDblclkTreeDir(NMHDR* pNMHDR, LRESULT* pResult)
 		fullPathStr.Delete(fullPathStr.GetLength() - 1);
 	}
 
-	Packet inPacket, outPacket;
-	DWORD handleID = ::GetCurrentThreadId();
-	HANDLE hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-	Scoped<HANDLE, decltype(&CloseHandle)> scoped(hEvent, &CloseHandle);
-	Packet* pOutPacket = &outPacket; Packet** ppOutPacket = &pOutPacket;
-	if (CClientController::GetInstance()->RegisterResponse(handleID, ppOutPacket, hEvent) < 0) {
-		MessageBox(_T("获取文件列表失败！"), _T("获取文件列表"), MB_OK | MB_ICONERROR);
-		return;
-	}
+    HANDLE handleID = this->GetSafeHwnd();
+    MapPacket::ResourcePacket rp;
+    if (!m_MapPacket.AppResourcePacket(WM_USER_FILELIST, rp)) {
+        MessageBox(_T("未知错误！"), _T("文件列表"), MB_OK | MB_ICONERROR);
+        return;
+    }
 
-	CPacketHandler::BuildPacket(inPacket, fullPathStr, strlen(fullPathStr), StatusCode::SC_NONE,
-		ChecksumType::CT_SUM, handleID, ReqRes::RR_REQUEST | CommandType::CMD_LIST_FILE);
-	Packet* pInPacket = &inPacket;
-	if (CClientController::GetInstance()->SendRequest(pInPacket) < 0) {
-		MessageBox(_T("获取文件列表失败！"), _T("获取文件列表"), MB_OK | MB_ICONERROR);
+    CPacketHandler::BuildPacket(*(rp.inPacket), fullPathStr, strlen(fullPathStr), ChecksumType::CT_SUM,
+        ReqRes::RR_REQUEST | CommandType::CMD_LIST_FILE, StatusCode::SC_NONE);
+    
+    CClientController::ReqInfo reqInfo(rp.inPacket, rp.outPacket, true, handleID, WM_USER_FILELIST);
+	if (CClientController::GetInstance()->SendRequest(reqInfo) < 0) {
+		MessageBox(_T("获取文件列表失败！"), _T("文件列表"), MB_OK | MB_ICONERROR);
+        m_MapPacket.PutResourcePacket(WM_USER_FILELIST);
 		return;
 	}
-	WaitForSingleObject(hEvent, INFINITE);
-	if ((*ppOutPacket) == NULL) {
-		MessageBox(_T("获取文件列表失败！"), _T("获取文件列表"), MB_OK | MB_ICONERROR);
-		return;
-	}
-
-	FileListBody flBody;
-	if (
-		(!CPacketHandler::ValidatePacket(outPacket, ReqRes::RR_RESPONSE | CommandType::CMD_LIST_FILE)) ||
-		((outPacket.header.statusCode & StatusCode::SC_ERR) != 0) ||
-		(!(FileListBody::Deserialize(outPacket.body, flBody)))
-		)
-	{
-		MessageBox(_T("获取文件列表失败！"), _T("获取文件列表"), MB_OK | MB_ICONERROR);
-		return;
-	}
-	UpdateFileTree(hTreeSelected, flBody);
-	return;
 }
 
-void CRemoteClientDlg::OnNMClickTreeDir(NMHDR* pNMHDR, LRESULT* pResult)
+afx_msg LRESULT CRemoteClientDlg::OnFileList(WPARAM wParam, LPARAM lParam)
 {
-	// TODO: 在此添加控件通知处理程序代码
-	*pResult = 0;
+    MapPacket::ResourcePacket rp;
+    if (!m_MapPacket.GetResourcePacket(WM_USER_FILELIST, rp)) {
+        MessageBox(_T("未知错误！"), _T("文件列表"), MB_OK | MB_ICONERROR);
+        return 0;
+    }
+
+    if (rp.outPacket->Empty()) {
+        MessageBox(_T("获取文件列表失败！"), _T("文件列表"), MB_OK | MB_ICONERROR);
+        m_MapPacket.PutResourcePacket(WM_USER_FILELIST);
+        return 0;
+    }
+
+    FileListBody flBody;
+    if (
+        (!CPacketHandler::ValidatePacket(*(rp.outPacket), ReqRes::RR_RESPONSE | CommandType::CMD_LIST_FILE)) ||
+        ((rp.outPacket->header.statusCode & StatusCode::SC_ERR) != 0) ||
+        (!(FileListBody::Deserialize(rp.outPacket->body, flBody)))
+        )
+    {
+        MessageBox(_T("获取文件列表失败！"), _T("获取文件列表"), MB_OK | MB_ICONERROR);
+        m_MapPacket.PutResourcePacket(WM_USER_FILELIST);
+        return 0;
+    }
+    UpdateFileTree(m_DblclkTreeItem, flBody);
+    m_tree.Expand(m_DblclkTreeItem, TVE_EXPAND);
+    m_MapPacket.PutResourcePacket(WM_USER_FILELIST);
+    return 0;
 }
 
 void CRemoteClientDlg::OnNMRClickListFile(NMHDR* pNMHDR, LRESULT* pResult)
@@ -440,93 +453,128 @@ void CRemoteClientDlg::OnFileMenuDownload()
 	TRACE("%s : %s %s\n", __FUNCTION__, _T("download file path : "), dlPathCStr);
 	CString savePathCStr = dlg.GetPathName();
 
-	Packet inPacket, outPacket;
+    HANDLE handleID = this->GetSafeHwnd();
+    MapPacket::ResourcePacket rp;
+    if (!m_MapPacket.AppResourcePacket(WM_USER_DOWNLOADFILE, rp)) {
+        MessageBox(_T("未知错误！"), _T("文件列表"), MB_OK | MB_ICONERROR);
+        return;
+    }
+
 	ReqFileBody rfBody;
 	rfBody.ctrlCode = ReqFileBody::RFB_CC_BEGIN;
 	rfBody.filePathLen = strlen(dlPathCStr);
 	rfBody.filePath.Write(dlPathCStr, strlen(dlPathCStr));
-	if (!ReqFileBody::Serialize(rfBody, inPacket.body)) {
+	if (!ReqFileBody::Serialize(rfBody, rp.inPacket->body)) {
 		MessageBox(_T("下载失败！"), _T("文件下载"), MB_OK | MB_ICONERROR);
+        m_MapPacket.PutResourcePacket(WM_USER_DOWNLOADFILE);
 		return;
 	}
 
-	DWORD handleID = ::GetCurrentThreadId();
-	HANDLE hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-	Scoped<HANDLE, decltype(&CloseHandle)> scoped(hEvent, &CloseHandle);
-	Packet* pOutPacket = &outPacket; Packet** ppOutPacket = &pOutPacket;
-	if (CClientController::GetInstance()->RegisterResponse(handleID, ppOutPacket, hEvent) < 0) {
-		MessageBox(_T("下载失败！"), _T("文件下载"), MB_OK | MB_ICONERROR);
-		return;
-	}
+    CPacketHandler::BuildPacketHeaderInPacket(*(rp.inPacket), ChecksumType::CT_SUM,
+        ReqRes::RR_REQUEST | CommandType::CMD_DOWNLOAD_FILE, StatusCode::SC_NONE);
 
-	CPacketHandler::BuildPacketHeaderInPacket(inPacket, StatusCode::SC_NONE, ChecksumType::CT_SUM,
-				handleID, ReqRes::RR_REQUEST | CommandType::CMD_DOWNLOAD_FILE);
-	Packet* pInPacket = &inPacket;
-	if (CClientController::GetInstance()->SendRequest(pInPacket) < 0) {
-		MessageBox(_T("下载失败！"), _T("文件下载"), MB_OK | MB_ICONERROR);
-		return;
-	}
+    CClientController::ReqInfo reqInfo(rp.inPacket, rp.outPacket, true, handleID, WM_USER_DOWNLOADFILE);
 
-	WaitForSingleObject(hEvent, INFINITE);
+    if (CClientController::GetInstance()->SendRequest(reqInfo) < 0) {
+        MessageBox(_T("下载失败！"), _T("文件下载"), MB_OK | MB_ICONERROR);
+        m_MapPacket.PutResourcePacket(WM_USER_DOWNLOADFILE);
+        return;
+    }
 
-	FileBody fBody;
-	if (((*ppOutPacket) == nullptr) ||
-		(!CPacketHandler::ValidatePacket(outPacket, ReqRes::RR_RESPONSE | CommandType::CMD_DOWNLOAD_FILE)) ||
-		(!FileBody::Deserialize(outPacket.body, fBody))
-		)
-	{
-		MessageBox(_T("下载失败！"), _T("文件下载"), MB_OK | MB_ICONERROR);
-		return;
-	}
+    m_DownloadFilePath[0] = dlPathCStr;
+    m_DownloadFilePath[1] = savePathCStr;
+}
 
-	CClientController::GetInstance()->StartDownloadFile(fBody.fileID, fBody.totalSize, dlPathCStr, savePathCStr);
+afx_msg LRESULT CRemoteClientDlg::OnDownloadFile(WPARAM wParam, LPARAM lParam)
+{
+    MapPacket::ResourcePacket rp;
+    if (!m_MapPacket.GetResourcePacket(WM_USER_DOWNLOADFILE, rp)) {
+        MessageBox(_T("未知错误！"), _T("文件下载"), MB_OK | MB_ICONERROR);
+        return 0;
+    }
+
+    if (rp.outPacket->Empty()) {
+        MessageBox(_T("下载失败！"), _T("文件下载"), MB_OK | MB_ICONERROR);
+        m_MapPacket.PutResourcePacket(WM_USER_DOWNLOADFILE);
+        return 0;
+    }
+
+    FileBody fBody;
+    if (
+        (!CPacketHandler::ValidatePacket(*(rp.outPacket), ReqRes::RR_RESPONSE | CommandType::CMD_DOWNLOAD_FILE)) ||
+        ((rp.outPacket->header.statusCode & StatusCode::SC_ERR) != 0) ||
+        (!FileBody::Deserialize(rp.outPacket->body, fBody))
+       )
+    {
+        MessageBox(_T("下载失败！"), _T("文件下载"), MB_OK | MB_ICONERROR);
+        m_MapPacket.PutResourcePacket(WM_USER_DOWNLOADFILE);
+        return 0;
+    }
+
+    m_MapPacket.PutResourcePacket(WM_USER_DOWNLOADFILE);
+    CClientController::GetInstance()->StartDownloadFile(fBody.fileID, fBody.totalSize,
+        m_DownloadFilePath[0], m_DownloadFilePath[1]);
+    return 0;
 }
 
 void CRemoteClientDlg::OnFileMenuDel()
 {
 	// TODO: 在此添加命令处理程序代码
-	int listSelected = m_list.GetSelectionMark();
-	if (listSelected < 0) { return; }
-	CString listItemText = m_list.GetItemText(listSelected, 0);
+	m_CurReqDelItem = m_list.GetSelectionMark();
+	if (m_CurReqDelItem < 0) { return; }
+	CString listItemText = m_list.GetItemText(m_CurReqDelItem, 0);
 	CString fullPathStr = GetTreeItemFullPath(m_DblclkTreeItem);
 	fullPathStr.AppendChar('\\');
 	fullPathStr.Append(listItemText);
 	TRACE("%s : %s %s\n", __FUNCTION__, _T("delete file path : "), fullPathStr);
 
-	Packet inPacket, outPacket;
-	DWORD handleID = ::GetCurrentThreadId();
-	HANDLE hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-	Scoped<HANDLE, decltype(&CloseHandle)> scoped(hEvent, &CloseHandle);
-	Packet* pOutPacket = &outPacket; Packet** ppOutPacket = &pOutPacket;
-	if (CClientController::GetInstance()->RegisterResponse(handleID, ppOutPacket, hEvent) < 0) {
-		MessageBox(_T("删除文件失败！"), _T("删除文件"), MB_OK | MB_ICONERROR);
-		return;
-	}
+    HANDLE handleID = this->GetSafeHwnd();
+    MapPacket::ResourcePacket rp;
+    if (!m_MapPacket.AppResourcePacket(WM_USER_DELFILE, rp)) {
+        MessageBox(_T("未知错误！"), _T("删除文件"), MB_OK | MB_ICONERROR);
+        m_MapPacket.PutResourcePacket(WM_USER_DELFILE);
+        return;
+    }
 
-	CPacketHandler::BuildPacket(inPacket, fullPathStr, strlen(fullPathStr), StatusCode::SC_NONE,
-		ChecksumType::CT_SUM, handleID, ReqRes::RR_REQUEST | CommandType::CMD_DEL_FILE);
-	Packet* pInPacket = &inPacket;
-	if (CClientController::GetInstance()->SendRequest(pInPacket) < 0) {
-		MessageBox(_T("删除文件失败！"), _T("删除文件"), MB_OK | MB_ICONERROR);
-		return;
-	}
-	WaitForSingleObject(hEvent, INFINITE);
-	if ((*ppOutPacket) == NULL) {
-		MessageBox(_T("删除文件失败！"), _T("删除文件"), MB_OK | MB_ICONERROR);
-		return;
-	}
+    CPacketHandler::BuildPacket(*(rp.inPacket), fullPathStr, strlen(fullPathStr), ChecksumType::CT_SUM,
+        ReqRes::RR_REQUEST | CommandType::CMD_DEL_FILE, StatusCode::SC_NONE);
 
-	if (
-		(!CPacketHandler::ValidatePacket(outPacket, ReqRes::RR_RESPONSE | CommandType::CMD_DEL_FILE)) ||
-		((outPacket.header.statusCode & StatusCode::SC_ERR) != 0)
-		)
-	{
-		MessageBox(_T("删除文件失败！"), _T("删除文件"), MB_OK | MB_ICONERROR);
-		return;
-	}
-	m_list.DeleteItem(listSelected);
-	MessageBox(_T("删除文件成功！"), _T("删除文件"), MB_OK | MB_ICONINFORMATION);
-	return;
+    CClientController::ReqInfo reqInfo(rp.inPacket, rp.outPacket, true, handleID, WM_USER_DELFILE);
+
+    if (CClientController::GetInstance()->SendRequest(reqInfo) < 0) {
+        MessageBox(_T("删除文件失败！"), _T("删除文件"), MB_OK | MB_ICONERROR);
+        m_MapPacket.PutResourcePacket(WM_USER_DELFILE);
+        return;
+    }
+}
+
+afx_msg LRESULT CRemoteClientDlg::OnDelFile(WPARAM wParam, LPARAM lParam)
+{
+    MapPacket::ResourcePacket rp;
+    if (!m_MapPacket.GetResourcePacket(WM_USER_DELFILE, rp)) {
+        MessageBox(_T("未知错误！"), _T("删除文件"), MB_OK | MB_ICONERROR);
+        return 0;
+    }
+
+    if (rp.outPacket->Empty()) {
+        MessageBox(_T("删除文件失败！"), _T("删除文件"), MB_OK | MB_ICONERROR);
+        m_MapPacket.PutResourcePacket(WM_USER_DELFILE);
+        return 0;
+    }
+
+    if (
+        (!CPacketHandler::ValidatePacket(*(rp.outPacket), ReqRes::RR_RESPONSE | CommandType::CMD_DEL_FILE)) ||
+        ((rp.outPacket->header.statusCode & StatusCode::SC_ERR) != 0)
+        )
+    {
+        MessageBox(_T("删除文件失败！"), _T("删除文件"), MB_OK | MB_ICONERROR);
+        m_MapPacket.PutResourcePacket(WM_USER_DELFILE);
+        return 0;
+    }
+    m_list.DeleteItem(m_CurReqDelItem);
+    MessageBox(_T("删除文件成功！"), _T("删除文件"), MB_OK | MB_ICONINFORMATION);
+    m_MapPacket.PutResourcePacket(WM_USER_DELFILE);
+    return 0;
 }
 
 void CRemoteClientDlg::OnFileMenuOpen()
@@ -540,40 +588,53 @@ void CRemoteClientDlg::OnFileMenuOpen()
 	fullPathStr.Append(listItemText);
 	TRACE("%s : %s %s\n", __FUNCTION__, _T("open file path : "), fullPathStr);
 
-	Packet inPacket, outPacket;
-	DWORD handleID = ::GetCurrentThreadId();
-	HANDLE hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-	Scoped<HANDLE, decltype(&CloseHandle)> scoped(hEvent, &CloseHandle);
-	Packet* pOutPacket = &outPacket; Packet** ppOutPacket = &pOutPacket;
-	if (CClientController::GetInstance()->RegisterResponse(handleID, ppOutPacket, hEvent) < 0) {
-		MessageBox(_T("打开文件失败！"), _T("打开文件"), MB_OK | MB_ICONERROR);
-		return;
-	}
-	CPacketHandler::BuildPacket(inPacket, fullPathStr, strlen(fullPathStr), StatusCode::SC_NONE,
-		ChecksumType::CT_SUM, handleID, ReqRes::RR_REQUEST | CommandType::CMD_RUN_FILE);
+    HANDLE handleID = this->GetSafeHwnd();
+    MapPacket::ResourcePacket rp;
+    if (!m_MapPacket.AppResourcePacket(WM_USER_OPENFILE, rp)) {
+        MessageBox(_T("未知错误！"), _T("打开文件"), MB_OK | MB_ICONERROR);
+        m_MapPacket.PutResourcePacket(WM_USER_OPENFILE);
+        return;
+    }
 
-	Packet* pInPacket = &inPacket;
-	if (CClientController::GetInstance()->SendRequest(pInPacket) < 0) {
-		MessageBox(_T("打开文件失败！"), _T("打开文件"), MB_OK | MB_ICONERROR);
-		return;
-	}
-	WaitForSingleObject(hEvent, INFINITE);
-	if ((*ppOutPacket) == NULL) {
-		MessageBox(_T("打开文件失败！"), _T("打开文件"), MB_OK | MB_ICONERROR);
-		return;
-	}
+    CPacketHandler::BuildPacket(*(rp.inPacket), fullPathStr, strlen(fullPathStr), ChecksumType::CT_SUM,
+        ReqRes::RR_REQUEST | CommandType::CMD_RUN_FILE, StatusCode::SC_NONE);
 
-	if (
-		(!CPacketHandler::ValidatePacket(outPacket, ReqRes::RR_RESPONSE | CommandType::CMD_RUN_FILE)) ||
-		((outPacket.header.statusCode & StatusCode::SC_ERR) != 0)
-		)
-	{
-		MessageBox(_T("打开文件失败！"), _T("打开文件"), MB_OK | MB_ICONERROR);
-		return;
-	}
+    CClientController::ReqInfo reqInfo(rp.inPacket, rp.outPacket, true, handleID, WM_USER_OPENFILE);
 
-	MessageBox(_T("文件打开成功！"), _T("打开文件"), MB_OK | MB_ICONINFORMATION);
-	return;
+    if (CClientController::GetInstance()->SendRequest(reqInfo) < 0) {
+        MessageBox(_T("打开文件失败！"), _T("打开文件"), MB_OK | MB_ICONERROR);
+        m_MapPacket.PutResourcePacket(WM_USER_OPENFILE);
+        return;
+    }
+}
+
+afx_msg LRESULT CRemoteClientDlg::OnOpenFile(WPARAM wParam, LPARAM lParam)
+{
+    MapPacket::ResourcePacket rp;
+    if (!m_MapPacket.GetResourcePacket(WM_USER_OPENFILE, rp)) {
+        MessageBox(_T("未知错误！"), _T("打开文件"), MB_OK | MB_ICONERROR);
+        return 0;
+    }
+
+    if (rp.outPacket->Empty()) {
+        MessageBox(_T("文件打开成功！"), _T("打开文件"), MB_OK | MB_ICONERROR);
+        m_MapPacket.PutResourcePacket(WM_USER_OPENFILE);
+        return 0;
+    }
+
+    if (
+        (!CPacketHandler::ValidatePacket(*(rp.outPacket), ReqRes::RR_RESPONSE | CommandType::CMD_RUN_FILE)) ||
+        ((rp.outPacket->header.statusCode & StatusCode::SC_ERR) != 0)
+        )
+    {
+        MessageBox(_T("打开文件失败！"), _T("打开文件"), MB_OK | MB_ICONERROR);
+    }
+    else
+    {
+        MessageBox(_T("文件打开成功！"), _T("打开文件"), MB_OK | MB_ICONINFORMATION);
+    }
+    m_MapPacket.PutResourcePacket(WM_USER_OPENFILE);
+    return 0;
 }
 
 void CRemoteClientDlg::OnBnClickedButRemoteMonitor()

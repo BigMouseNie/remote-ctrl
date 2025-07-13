@@ -23,6 +23,8 @@ CClientController::CClientController() :
 
 	m_DPDlg.Create(IDD_DOWNLOAD_FILE, NULL);
 	m_MWDlg.Create(IDD_REMOTE_MONITOR, NULL);
+
+    m_MainThreadID = GetCurrentThreadId();
 }
 
 CClientController::~CClientController()
@@ -33,7 +35,7 @@ CClientController::~CClientController()
 	}
 	WaitForSingleObject(m_EntryCtrlThread, 100);
 	CleanupHandles();
-	ClearThreadData();
+	ClearData();
 }
 
 void CClientController::CleanupHandles() {
@@ -99,19 +101,24 @@ void CClientController::ConnectServer()
 	PostMsgToCtrlThread(WM_USER_CONNECTSERVER);
 }
 
-int CClientController::SendRequest(ReqInfo resInfo)
+int CClientController::SendRequest(ReqInfo& reqInfo)
 {
-	if (!m_WorkerRunning) { return -1; }
-	m_BlockingQue.push(resInfo);
-	return 0;
-}
-
-int CClientController::RegisterResponse(uint32_t handlerID, Packet** ppOutPacket, HANDLE hEvent)
-{
-	if (!m_WorkerRunning) { return -1; }
-	ResInfo rInfo(hEvent, ppOutPacket);
-	std::lock_guard<std::mutex> registryLock(m_ResRegistryMtx);
-	m_ResRegistry[handlerID].push_back(rInfo);
+    if (!m_WorkerRunning) { return -1; }
+    if (reqInfo.isResponse) {
+        HandleID regKey = GetRegKey();
+        size_t taskID = m_TimerScheduler.post(
+            [threadID = m_MainThreadID, msg = WM_USER_RESPONSETIMEOUT, regKey]() {
+                ::PostThreadMessage(threadID, msg, regKey, regKey);
+            },
+            5000);
+        RegVal regVal(reqInfo.outPacket, reqInfo.handleID, reqInfo.msg, taskID);
+        {
+            std::lock_guard<std::mutex> registryLock(m_ResRegistryMtx);
+            m_ResRegistry[regKey] = regVal;
+        }
+        reqInfo.inPacket->header.handleID = regKey;
+    }
+    m_RequestQue.push({reqInfo.inPacket, reqInfo.isManualDel});
 	return 0;
 }
 
@@ -155,11 +162,15 @@ void CClientController::CtrlThread()
 		case WM_USER_CONNECTSERVER:
 			StopWorkerAndWaitRestart();
 			while (::PeekMessage(&tmpMsg, NULL, WM_USER_ERRHANDLER_MINVALID, WM_USER_ERRHANDLER_MAXVALID, PM_REMOVE)) {}
-			ClearThreadData();
+			ClearData();
 			if (CClientSocket::GetInstance()->Connect(m_server_ip, m_port)) {
 				SafeStartWorker();
 			}
 			break;
+
+        case WM_USER_RESPONSETIMEOUT:
+            EraseRegElem(msg.wParam);
+            break;
 
 		case WM_USER_CONNECTIONERR:
 			StopWorkerAndWaitRestart();				// 停止工作
@@ -243,31 +254,31 @@ void CClientController::StopWorkerAndWaitRestart()
 	WaitForSingleObject(m_ResponseWorkerCtrlSignal[1], INFINITE);
 }
 
-void CClientController::ClearThreadData()
+void CClientController::ClearData()
 {
-	for (auto& pair : m_ResRegistry) {
-		for (ResInfo& resInfo : pair.second) {
-			resInfo.ppPacket = nullptr;
-			SetEvent(resInfo.hEvent);
-		}
-	}
-	m_ResRegistry.clear();
+    {
+        std::lock_guard<std::mutex> lock(m_ResRegistryMtx);
+        for (auto& pair : m_ResRegistry) {
+            ::PostMessage((HWND)pair.second.handleID, pair.second.msg, 0, 0);
+        }
+    
+        m_ResRegistry.clear();
+    }
 
-	m_BlockingQue.Release();
-	m_BlockingQue.Clear();
-	m_BlockingQue.Blocking();
+	m_RequestQue.Clear();
+    m_TimerScheduler.Clear();
 }
 
 void CClientController::ConnectionErrorHandling()
 {
 	TRACE("%s : \n", __FUNCTION__);
-	ClearThreadData();
+	ClearData();
 }
 
 void CClientController::UnknownErrorHandling()
 {
 	TRACE("%s : \n", __FUNCTION__);
-	ClearThreadData();
+	ClearData();
 }
 
 unsigned int __stdcall CClientController::EntryReqWorkerThread(void* arg)
@@ -286,28 +297,25 @@ unsigned int __stdcall CClientController::EntryReqWorkerThread(void* arg)
 void CClientController::RequestWorker()
 {
 	while (m_WorkerRunning) {
-		ReqInfo rInfo = nullptr;
-		if (!m_BlockingQue.pop(rInfo)) {
+        ReqElem reqElem;
+		if (!m_RequestQue.pop(reqElem)) {
 			PostMsgToCtrlThread(WM_USER_UNKNOWNERR);
 			break;
 		}
-		if (CClientSocket::GetInstance()->SendPacket(*(rInfo.pPacket)) < 0) {
+		if (CClientSocket::GetInstance()->SendPacket(*(reqElem.packet)) < 0) {
 			PostMsgToCtrlThread(WM_USER_CONNECTIONERR);
 			break;
 		}
-		else {
-			if (!rInfo.isResponse && rInfo.pPacket) {
-				delete rInfo.pPacket;
-				rInfo.pPacket = nullptr;
-			}
-		}
+        if (!reqElem.isManualDel && reqElem.packet) {
+            delete reqElem.packet;
+        }
 	}
 	WaitForSingleObject(m_WorkerStopSyncSignal, INFINITE);
 }
 
 void CClientController::StopRequestWorker()
 {
-	m_BlockingQue.Release();
+	m_RequestQue.Release();
 	CClientSocket::GetInstance()->Disconnect();
 }
 
@@ -345,17 +353,33 @@ void CClientController::StopResponseWorker()
 
 void CClientController::DispatchResponse(const Packet& resPacket)
 {
-	uint32_t handleID = resPacket.header.handleID;
-	std::lock_guard<std::mutex> registryLock(m_ResRegistryMtx);
-	auto it = m_ResRegistry.find(handleID);
-	if (it == m_ResRegistry.end()) { return; }
-	std::list<ResInfo>& resInfoList = it->second;
-	for (ResInfo& resInfo : resInfoList) {
-		Packet& outPacket = **(resInfo.ppPacket);
-		outPacket = resPacket;
-		SetEvent(resInfo.hEvent);
-	}
-	m_ResRegistry.erase(it);
+	HandleID handleID = resPacket.header.handleID;
+    RegVal regVal;
+    {
+        std::lock_guard<std::mutex> registryLock(m_ResRegistryMtx);
+        auto it = m_ResRegistry.find(handleID);
+        if (it == m_ResRegistry.end()) { return; }
+        regVal = it->second;
+        m_ResRegistry.erase(it);
+    }
+    m_TimerScheduler.Cancel(regVal.taskID);
+    *(regVal.outPacket) = resPacket;
+    if (!::PostMessage((HWND)regVal.handleID, regVal.msg, 0, 0)) {
+        TRACE("%s : %d\n", __FUNCTION__, GetLastError());
+    }
+}
+
+void CClientController::EraseRegElem(HandleID regKey)
+{
+    RegVal regVal;
+    {
+        std::lock_guard<std::mutex> registryLock(m_ResRegistryMtx);
+        auto it = m_ResRegistry.find(regKey);
+        if (it == m_ResRegistry.end()) { return; }
+        regVal = it->second;
+        m_ResRegistry.erase(it);
+    }
+    ::PostMessage((HWND)regVal.handleID, regVal.msg, 0, 0);
 }
 
 bool CClientController::StartDownloadFile(uint32_t fileID, uint64_t totalSize, CString downloadFileName,

@@ -5,6 +5,8 @@
 #include "CMonitorWin.h"
 #include "Singleton.h"
 #include "BlockingQueue.h"
+#include "Packet.h"
+#include "TimerScheduler.h"
 
 #include <atomic>
 #include <mutex>
@@ -18,6 +20,8 @@
 #define WM_USER_STOPWORKER				(WM_USER + 5)
 #define WM_USER_CONNECTSERVER			(WM_USER + 6)
 
+#define WM_USER_RESPONSETIMEOUT			(WM_USER + 100)
+
 #define WM_USER_ERRHANDLER_MINVALID		(WM_USER + 1000)
 #define WM_USER_CONNECTIONERR			(WM_USER_ERRHANDLER_MINVALID + 0)
 #define WM_USER_UNKNOWNERR				(WM_USER_ERRHANDLER_MINVALID + 1)
@@ -30,18 +34,45 @@ class CClientController : public Singleton<CClientController>
 public:
 	struct ReqInfo
 	{
-	    const Packet* pPacket;
+	    Packet* inPacket;
+        Packet* outPacket;
 		bool isResponse;
-		ReqInfo(const Packet* pPacket, bool isResponse = true) : pPacket(pPacket), isResponse(isResponse) {}
+        HANDLE handleID;
+        UINT msg;
+        bool isManualDel;
+        ReqInfo(Packet* inPacket, Packet* outPacket, bool isResponse, HANDLE handleID, UINT msg, bool isManualDel = true) :
+            inPacket(inPacket), outPacket(outPacket),
+            isResponse(isResponse), handleID(handleID), msg(msg),
+            isManualDel(isManualDel)
+        {}
 	};
 
-	struct ResInfo
-	{
-		HANDLE hEvent;
-		Packet** ppPacket;
-		ResInfo() : hEvent(NULL), ppPacket(NULL) {}
-		ResInfo(HANDLE hEvent, Packet** ppPacket) : hEvent(hEvent), ppPacket(ppPacket) {}
-	};
+private:
+    struct RegVal {
+        Packet* outPacket;
+        HANDLE handleID;
+        UINT msg;
+        size_t taskID;
+        RegVal(Packet* outPacket, HANDLE handleID, UINT msg, size_t taskID) :
+            outPacket(outPacket), handleID(handleID), msg(msg), taskID(taskID) {}
+        RegVal() :
+            outPacket(nullptr), handleID(0), msg(0), taskID(0) {}
+    };
+
+    struct ReqElem {
+        Packet* packet;
+        bool isManualDel;
+        ReqElem() :
+            packet(nullptr), isManualDel(true) {}
+        ReqElem(Packet* packet, bool isManualDel) :
+            packet(packet), isManualDel(isManualDel) {}
+    };
+
+    HandleID GetRegKey() {
+        static std::atomic<HandleID> key = 0;
+        return key.fetch_add(1);
+    }
+
 public:
 	int InitController();
 	int Invoke(CWnd*& outPMainWnd);
@@ -49,8 +80,7 @@ public:
 	void UpdataServerAddress(DWORD ip, DWORD port);
 	void ConnectServer();
 
-	int SendRequest(ReqInfo resInfo);
-	int RegisterResponse(uint32_t handleID, Packet** ppOutPacket, HANDLE hEvent);
+	int SendRequest(ReqInfo& resInfo);
 
 	bool StartDownloadFile(uint32_t fileID, uint64_t totalSize, CString downloadFileName,
 							CString savefilePath, bool force = false);
@@ -79,12 +109,15 @@ protected:
 	void SafeStartWorker();
 
 	// 错误处理相关
-	void ClearThreadData();
+	void ClearData();
 	void ConnectionErrorHandling();
 	void UnknownErrorHandling();
 
+    DWORD m_MainThreadID;
+    TimerScheduler m_TimerScheduler;
+
 	// 发送请求线程相关
-	BlockingQueue<ReqInfo> m_BlockingQue;
+	BlockingQueue<ReqElem> m_RequestQue;
 	HANDLE m_EntryReqWorkerThread;
 	unsigned int m_EntryReqWorkerThreadID;
 	static unsigned int __stdcall EntryReqWorkerThread(void* arg);
@@ -93,13 +126,14 @@ protected:
 
 	// 通知响应线程相关
 	std::mutex m_ResRegistryMtx;
-	std::unordered_map<uint32_t, std::list<ResInfo>> m_ResRegistry;
+	std::unordered_map<HandleID, RegVal> m_ResRegistry;
 	HANDLE m_EntryResWorkerThread;
 	unsigned int m_EntryResWorkerThreadID;
 	static unsigned int __stdcall EntryResWorkerThread(void* arg);
 	void ResponseWorker();
 	void StopResponseWorker();
 	void DispatchResponse(const Packet& resPacket);
+    void EraseRegElem(HandleID regKey);
 
 private:
 	CRemoteClientDlg m_RCDlg;

@@ -18,7 +18,7 @@ CMonitorWin::CMonitorWin(CWnd* pParent /*=nullptr*/)
 	m_EntryRemoteMonitorThreadID(0),
 	m_EntryRemoteMonitorThread(NULL)
 {
-
+    m_HEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 }
 
 CMonitorWin::~CMonitorWin()
@@ -26,6 +26,10 @@ CMonitorWin::~CMonitorWin()
 	if (!m_cachedImage.IsNull()) {
 		m_cachedImage.Destroy();
 	}
+    if (m_HEvent) {
+        CloseHandle(m_HEvent);
+        m_HEvent = NULL;
+    }
 }
 
 void CMonitorWin::DoDataExchange(CDataExchange* pDX)
@@ -55,6 +59,7 @@ BEGIN_MESSAGE_MAP(CMonitorWin, CDialogEx)
 	ON_MESSAGE(WM_USER_STOPREMOTEMONITOR, &CMonitorWin::OnStopRemoteMonitor)
 	ON_MESSAGE(WM_USER_ENABLEWINCTRL, &CMonitorWin::OnEnableWinCtrl)
 	ON_MESSAGE(WM_USER_DISABLEWINCTRL, &CMonitorWin::OnDisableWinCtrl)
+    ON_MESSAGE(WM_USER_FRAMEDATACOMING, &CMonitorWin::OnFrameDataComing)
 	ON_MESSAGE(WM_USER_REMOTEMONITOR_ERR, &CMonitorWin::OnRemoteMonitorErr)
 END_MESSAGE_MAP()
 
@@ -92,7 +97,6 @@ void CMonitorWin::DrawFrame(const Buffer& frameBuf)
 {
 	IStream* pStream = SHCreateMemStream((const BYTE*)(frameBuf.GetReadPtr()), frameBuf.Readable());
 	if (!pStream) return;
-
 	m_cachedImage.Destroy();
 
 	if (SUCCEEDED(m_cachedImage.Load(pStream))) {
@@ -117,42 +121,46 @@ unsigned int __stdcall CMonitorWin::EntryRemoteMonitorThread(void* arg)
 void CMonitorWin::RemoteMonitor()
 {
 	m_IsMonitoring = true;
-	Packet inPacket, outPacket;
-	DWORD handleID = ::GetCurrentThreadId();
-	HANDLE hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-	Scoped<HANDLE, decltype(&CloseHandle)> scoped(hEvent, &CloseHandle);
-	Packet* pOutPacket = &outPacket; Packet** ppOutPacket = &pOutPacket;
-	CPacketHandler::BuildPacketHeaderInPacket(inPacket, StatusCode::SC_NONE, ChecksumType::CT_NONE,
-		handleID, ReqRes::RR_REQUEST | CommandType::CMD_SEND_SCREEN);
+
+    HANDLE handleID = this->GetSafeHwnd();
+    MapPacket::ResourcePacket rp;
+    if (!m_MapPacket.AppResourcePacket(WM_USER_FRAMEDATACOMING, rp)) {
+        PostMessage(WM_USER_REMOTEMONITOR_ERR, 0, 0);
+        return;
+    }
+
+	CPacketHandler::BuildPacketHeaderInPacket(*(rp.inPacket), ChecksumType::CT_NONE,
+		ReqRes::RR_REQUEST | CommandType::CMD_SEND_SCREEN, StatusCode::SC_NONE);
+    CClientController::ReqInfo reqInfo(rp.inPacket, rp.outPacket, true, handleID, WM_USER_FRAMEDATACOMING);
+    ResetEvent(m_HEvent);
 	PostMessage(WM_USER_ENABLEWINCTRL, 0, 0);
 	while (!m_StopMonitoring) {
-		if (CClientController::GetInstance()->RegisterResponse(handleID, ppOutPacket, hEvent) < 0) {
-			PostMessage(WM_USER_REMOTEMONITOR_ERR, 0, 0);
-			break;
-		}
+        if (CClientController::GetInstance()->SendRequest(reqInfo) < 0) {
+            PostMessage(WM_USER_REMOTEMONITOR_ERR, 0, 0);
+            break;
+        }
 
-		if (CClientController::GetInstance()->SendRequest(&inPacket) < 0) {
-			PostMessage(WM_USER_REMOTEMONITOR_ERR, 0, 0);
-			break;
-		}
-
-		WaitForSingleObject(hEvent, INFINITE);
-		ResetEvent(hEvent);
+		WaitForSingleObject(m_HEvent, INFINITE);
+		ResetEvent(m_HEvent);
+        if (m_StopMonitoring) {
+            break;
+        }
 
 		if (
-			((*ppOutPacket) == nullptr) ||
-			(!CPacketHandler::ValidatePacket(outPacket, ReqRes::RR_RESPONSE | CommandType::CMD_SEND_SCREEN))
-			)
+			(rp.outPacket->Empty()) ||
+			(!CPacketHandler::ValidatePacket(*(rp.outPacket), ReqRes::RR_RESPONSE | CommandType::CMD_SEND_SCREEN))
+		   )
 		{
 			PostMessage(WM_USER_REMOTEMONITOR_ERR, 0, 0);
 			break;
 		}
 
-		DrawFrame(outPacket.body);
-		outPacket.Clear();
+		DrawFrame(rp.outPacket->body);
+        rp.outPacket->Clear();
 		Sleep(200);
 	}
 	PostMessage(WM_USER_DISABLEWINCTRL, 0, 0);
+    m_MapPacket.PutResourcePacket(WM_USER_FRAMEDATACOMING);
 	m_IsMonitoring = false;
 }
 
@@ -174,6 +182,7 @@ afx_msg LRESULT CMonitorWin::OnStopRemoteMonitor(WPARAM wParam, LPARAM lParam)
 {
 	ShowWindow(SW_HIDE);
 	if (!m_IsMonitoring) { return 0; }
+    SetEvent(m_HEvent);
 	m_StopMonitoring = true;
 	if (m_EntryRemoteMonitorThread) {
 		WaitForSingleObject(m_EntryRemoteMonitorThread, INFINITE);
@@ -197,6 +206,12 @@ afx_msg LRESULT CMonitorWin::OnDisableWinCtrl(WPARAM wParam, LPARAM lParam)
 	m_LockMachine.EnableWindow(FALSE);
 	m_UnlockMachine.EnableWindow(FALSE);
 	return 0;
+}
+
+afx_msg LRESULT CMonitorWin::OnFrameDataComing(WPARAM wParam, LPARAM lParam)
+{
+    SetEvent(m_HEvent);
+    return 0;
 }
 
 afx_msg LRESULT CMonitorWin::OnRemoteMonitorErr(WPARAM wParam, LPARAM lParam)
@@ -232,11 +247,11 @@ void CMonitorWin::DealMouseEvent(CPoint point, MouseEventBody& meb)
 		return;
 	}
 
-	CPacketHandler::BuildPacketHeaderInPacket(*pPacket, StatusCode::SC_NONE,
-		ChecksumType::CT_NONE, 0, ReqRes::RR_REQUEST | CommandType::CMD_MOUSE_EVENT);
+	CPacketHandler::BuildPacketHeaderInPacket(*pPacket, ChecksumType::CT_NONE,
+        ReqRes::RR_REQUEST | CommandType::CMD_MOUSE_EVENT, StatusCode::SC_NONE);
 
-	CClientController::ReqInfo rInfo(pPacket, false);
-	CClientController::GetInstance()->SendRequest(rInfo);
+    CClientController::ReqInfo reqInfo(pPacket, nullptr, false, 0, 0, false);
+	CClientController::GetInstance()->SendRequest(reqInfo);
 	return;
 }
 
@@ -378,20 +393,20 @@ void CMonitorWin::OnBnClickedButLockmachine()
 {
 	// TODO: 在此添加控件通知处理程序代码
 
-	Packet* pPacket = new Packet;
-	CPacketHandler::BuildPacketHeaderInPacket(*pPacket, StatusCode::SC_NONE,
-		ChecksumType::CT_NONE, 0, ReqRes::RR_REQUEST | CommandType::CMD_LOCK_MACHINE);
-	CClientController::ReqInfo rInfo(pPacket, false);
-	CClientController::GetInstance()->SendRequest(rInfo);
+    Packet* pPacket = new Packet;
+    CPacketHandler::BuildPacketHeaderInPacket(*pPacket, ChecksumType::CT_NONE,
+        ReqRes::RR_REQUEST | CommandType::CMD_LOCK_MACHINE, StatusCode::SC_NONE);
+    CClientController::ReqInfo reqInfo(pPacket, nullptr, false, 0, 0, false);
+    CClientController::GetInstance()->SendRequest(reqInfo);
 }
 
 void CMonitorWin::OnBnClickedButUnlockmachine()
 {
 	// TODO: 在此添加控件通知处理程序代码
 
-	Packet* pPacket = new Packet;
-	CPacketHandler::BuildPacketHeaderInPacket(*pPacket, StatusCode::SC_NONE,
-		ChecksumType::CT_NONE, 0, ReqRes::RR_REQUEST | CommandType::CMD_UNLOCK_MACHINE);
-	CClientController::ReqInfo rInfo(pPacket, false);
-	CClientController::GetInstance()->SendRequest(rInfo);
+    Packet* pPacket = new Packet;
+    CPacketHandler::BuildPacketHeaderInPacket(*pPacket, ChecksumType::CT_NONE,
+        ReqRes::RR_REQUEST | CommandType::CMD_UNLOCK_MACHINE, StatusCode::SC_NONE);
+    CClientController::ReqInfo reqInfo(pPacket, nullptr, false, 0, 0, false);
+    CClientController::GetInstance()->SendRequest(reqInfo);
 }
